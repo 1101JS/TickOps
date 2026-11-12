@@ -50,7 +50,7 @@ const HandleLogin = () => {
       </form>
 
       <footer class="login-footer">
-        <p>UTH · Sistema de Soporte Técnico</p>
+        <p>UTH · Sistema de Soporte Técnico · AF ILY</p>
       </footer>
     </section>
   </main>
