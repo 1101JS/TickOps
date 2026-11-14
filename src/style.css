@@ -157,11 +157,11 @@ code {
 }
 
 #app {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  text-align: left;
   min-height: 100svh;
   display: flex;
   flex-direction: column;
@@ -293,4 +293,89 @@ code {
     right: 0;
     border-right-color: var(--border);
   }
+
+
+/* =====================================
+   TICKOPS - GLOBAL DESIGN SYSTEM
+===================================== */
+
+:root {
+  /* Brand */
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-soft: #dbeafe;
+
+  /* Backgrounds */
+  --color-background: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-secondary: #f1f5f9;
+
+  /* Text */
+  --color-text: #0f172a;
+  --color-text-secondary: #64748b;
+
+  /* Borders */
+  --color-border: #e2e8f0;
+
+  /* Status */
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
+
+  /* Effects */
+  --shadow-card: 0 8px 25px rgba(15, 23, 42, 0.06);
+  --radius-card: 12px;
+  --radius-button: 8px;
+
+  /* Typography */
+  --font-primary: Arial, sans-serif;
+}
+
+/* =====================================
+   DARK THEME
+===================================== */
+
+:root[data-theme="dark"] {
+  --color-primary: #3b82f6;
+  --color-primary-hover: #60a5fa;
+  --color-primary-soft: #1e3a5f;
+
+  --color-background: #0b1120;
+  --color-surface: #151f32;
+  --color-surface-secondary: #1e293b;
+
+  --color-text: #f1f5f9;
+  --color-text-secondary: #94a3b8;
+
+  --color-border: #334155;
+
+  --color-success: #4ade80;
+  --color-warning: #fbbf24;
+  --color-danger: #f87171;
+
+  --shadow-card: 0 8px 25px rgba(0, 0, 0, 0.2);
+}
+
+/* =====================================
+   GLOBAL BASE
+===================================== */
+
+body {
+  margin: 0;
+  font-family: var(--font-primary);
+  background: var(--color-background);
+  color: var(--color-text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
 }

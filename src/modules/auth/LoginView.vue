@@ -12,7 +12,7 @@ const HandleLogin = () => {
     <section class="login-card">
       <div class="login-brand">
         <div class="login-logo">E</div>
-        <h1>ETicket</h1>
+        <h1>TickOps</h1>
         <p>Sistema de Gestión de Incidencias</p>
       </div>
 
@@ -50,7 +50,7 @@ const HandleLogin = () => {
       </form>
 
       <footer class="login-footer">
-        <p>UTH · Sistema de Soporte Técnico</p>
+        <p>UTH · Sistema de Soporte Técnico </p>
       </footer>
     </section>
   </main>
