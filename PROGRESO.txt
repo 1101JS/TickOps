@@ -1,0 +1,54 @@
+TICKOPS - ESTADO DEL PROYECTO
+Última sesión: 19-nov-2026
+==============================
+
+LO QUE YA ESTÁ HECHO
+--------------------
+1. Backend completo y portable (sin dependencias nuevas):
+   - server/app.js     API REST: login con cookie, tickets, seguimientos, técnicos y usuarios
+   - server/schema.js  tablas y cuentas demo, se crean solas al arrancar
+   - server/worker.js  modo en línea (Cloudflare Worker + base de datos D1)
+   - server/node.js    modo LAN (Node + archivo SQLite en data/tickops.db)
+   - wrangler.jsonc    configuración de Cloudflare (Worker "eticket")
+2. Frontend conectado a la API (src/services/). Ya no usa localStorage.
+3. Desplegado en https://tickops.bid con cada push a main (Workers Builds).
+   Probado en vivo: /api/health, login y lista de tickets.
+4. El remoto de git cambió a https://github.com/1101JS/TickOps.git (el repo se renombró).
+5. README.md explica los modos en línea, LAN y desarrollo.
+
+Cuentas demo: admin/admin, tecnico/tecnico (también carlos, maria, jose), usuario/usuario
+
+PRUEBA MANUAL DEL BACKEND (en curso)
+------------------------------------
+Arrancar el servidor (terminal 1, DENTRO de la carpeta del proyecto):
+   cd C:\Users\Daniel\Desktop\Web2\Eticket
+   npm run build
+   npm run lan:demo
+
+Probar (terminal 2, PowerShell; las variables se pierden si cierras la terminal):
+   $api = "http://localhost:3000/api"
+   $s = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+   Invoke-RestMethod "$api/auth/login" -Method Post -ContentType 'application/json' -Body '{"username":"usuario","password":"usuario"}' -WebSession $s
+
+   [OK] Paso 2  health -> ok True
+   [OK] Paso 3  login como usuario -> role=applicant
+   [  ] Paso 4a crear ticket:
+        $t = (Invoke-RestMethod "$api/tickets" -Method Post -ContentType 'application/json' -WebSession $s -Body '{"title":"Prueba backend","category":"Hardware","priority":"Media","description":"Mi primer test"}').ticket
+        $t | Select-Object id, title, status, technicianName
+   [  ] Paso 4b el solicitante intenta cambiar el estado -> DEBE dar error 403
+   [  ] Paso 4c el admin reasigna a Ana (technicianId 2) -> En proceso
+   [  ] Paso 4d tecnico agrega seguimiento y marca Resuelta
+   [  ] Paso 5  misma prueba desde el navegador en http://localhost:3000
+
+   Nota: evitar tildes/eñes dentro de -Body en PowerShell 5.1.
+   Reiniciar datos locales: Ctrl+C, borrar data\tickops.db*, npm run lan:demo
+
+LO QUE FALTA
+------------
+- Terminar la prueba manual (pasos 4a-5) y probar la interfaz con los 3 roles.
+- Pantalla de registro (/registro sigue diciendo "no habilitado"; la API ya existe).
+- Pantalla de gestión de usuarios para el admin (la API /api/users ya existe).
+- Landing: el botón "Solicitar información" usa mailto:contacto@tickops.com
+  (dominio incorrecto). Corregirlo o crear un formulario de contacto con guardado en la base.
+- Reinicio automático diario de la demo pública (los datos demo son compartidos).
+- Límite de intentos en el login y avisos por correo (opcional).
