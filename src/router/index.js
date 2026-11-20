@@ -1,12 +1,13 @@
-
 import { createRouter, createWebHistory } from 'vue-router'
 
 import AdminDashboard from '../modules/incidents/views/AdminDashboard.vue'
 import TechnicianDashboard from '../modules/incidents/views/TechnicianDashboard.vue'
 import ApplicantDashboard from '../modules/incidents/views/ApplicantDashboard.vue'
+import UsersView from '../modules/admin/UsersView.vue'
+import IncidentHistory from '../modules/incidents/views/IncidentHistory.vue'
 import LoginView from '../modules/auth/LoginView.vue'
 import LandingView from '../modules/landing/views/LandingView.vue'
-import { getSession, isAuthenticated, loadSession, routeForRole } from '../services/AuthService.js'
+import { getSession, isAuthenticated, routeForRole } from '../services/AuthService.js'
 
 const routes = [
   {
@@ -26,6 +27,12 @@ const routes = [
     meta: { requiresAuth: true, roles: ['admin'] }
   },
   {
+    path: '/usuarios',
+    name: 'UsersView',
+    component: UsersView,
+    meta: { requiresAuth: true, roles: ['admin'] }
+  },
+  {
     path: '/tecnico',
     name: 'TechnicianDashboard',
     component: TechnicianDashboard,
@@ -36,6 +43,12 @@ const routes = [
     name: 'ApplicantDashboard',
     component: ApplicantDashboard,
     meta: { requiresAuth: true, roles: ['applicant'] }
+  },
+  {
+    path: '/historial',
+    name: 'IncidentHistory',
+    component: IncidentHistory,
+    meta: { requiresAuth: true, roles: ['admin', 'technician', 'applicant'] }
   },
   {
     path: '/registro',
@@ -49,9 +62,7 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach(async (to) => {
-  // Valida la sesión contra el servidor (cookie HttpOnly) antes de la primera navegación.
-  await loadSession()
+router.beforeEach((to) => {
   const session = getSession()
 
   if (to.meta.requiresAuth && !isAuthenticated()) {

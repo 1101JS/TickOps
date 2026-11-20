@@ -1,13 +1,18 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import '../styles/AdminDashboard.css'
 import { logout } from '../../../services/AuthService.js'
-import { createIncident, getIncidents, getTechnicians, replaceIncident, updateIncident } from '../../../services/IncidentService.js'
+import { getIncidents, getLeastBusyTechnicianId, saveIncidents } from '../../../services/IncidentService.js'
 
 const router = useRouter()
-const technicians = ref([])
-const incidents = ref([])
+const technicians = ref([
+  { id: 1, name: 'Ana López', specialty: 'Hardware', email: 'ana.lopez@uth.hn', initials: 'AL', workload: 0 },
+  { id: 2, name: 'Carlos Mejía', specialty: 'Software', email: 'carlos.mejia@uth.hn', initials: 'CM', workload: 0 },
+  { id: 3, name: 'María García', specialty: 'Redes', email: 'maria.garcia@uth.hn', initials: 'MG', workload: 0 },
+  { id: 4, name: 'José Rivera', specialty: 'Soporte general', email: 'jose.rivera@uth.hn', initials: 'JR', workload: 0 }
+])
+const incidents = ref(getIncidents())
 const newIncident = ref({ title: '', category: '', priority: 'Media', description: '', technicianId: null })
 const selectedIncident = ref(null)
 const editingIncident = ref(null)
@@ -15,62 +20,24 @@ const activeSection = ref('panel')
 const notice = ref('')
 const search = ref('')
 const statusFilter = ref('Todos')
-
-function initials(name) { return name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0].toUpperCase()).join('') }
 function technicianName(id) { return technicians.value.find(t => t.id === id)?.name || 'Sin asignar' }
 function syncWorkload() { technicians.value.forEach(t => { t.workload = incidents.value.filter(i => i.technicianId === t.id && i.status !== 'Resuelta').length }) }
-function showError(error) { notice.value = error.message || 'Ocurrió un error inesperado.' }
-
-async function loadData() {
-  try {
-    const [techList, ticketList] = await Promise.all([getTechnicians(), getIncidents()])
-    technicians.value = techList.map(t => ({ ...t, initials: initials(t.name) }))
-    incidents.value = ticketList
-    syncWorkload()
-  } catch (error) { showError(error) }
-}
-
+syncWorkload()
+watch(incidents, items => saveIncidents(items), { deep: true })
 const filteredIncidents = computed(() => { const term = search.value.trim().toLowerCase(); return incidents.value.filter(i => (statusFilter.value === 'Todos' || i.status === statusFilter.value) && (!term || [i.id, i.title, i.category, technicianName(i.technicianId)].join(' ').toLowerCase().includes(term))) })
 const openIncidents = computed(() => incidents.value.filter(i => i.status !== 'Resuelta').length)
 const unassignedIncidents = computed(() => incidents.value.filter(i => !i.technicianId && i.status !== 'Resuelta').length)
-
-async function submitIncident() {
-  try {
-    const { technicianId, ...fields } = newIncident.value
-    const incident = await createIncident({ ...fields, technicianId: technicianId ? Number(technicianId) : null })
-    incidents.value.unshift(incident)
-    syncWorkload(); newIncident.value = { title: '', category: '', priority: 'Media', description: '', technicianId: null }
-    notice.value = `Incidencia #${incident.id} registrada y asignada a ${incident.technicianName || 'nadie (sin técnicos activos)'}.`; goTo('incidents')
-  } catch (error) { showError(error) }
+function submitIncident() {
+  const id = Math.max(0, ...incidents.value.map(i => i.id)) + 1
+  const assignedTechnicianId = newIncident.value.technicianId ? Number(newIncident.value.technicianId) : getLeastBusyTechnicianId(incidents.value)
+  incidents.value.unshift({ id, title: newIncident.value.title.trim(), category: newIncident.value.category, priority: newIncident.value.priority, description: newIncident.value.description.trim(), technicianId: assignedTechnicianId, status: 'Pendiente', createdAt: new Intl.DateTimeFormat('es-HN', { dateStyle: 'medium' }).format(new Date()), reporter: 'Administrador', updates: [{ date: 'Ahora', text: 'Incidencia registrada y asignada automáticamente.' }] })
+  syncWorkload(); newIncident.value = { title: '', category: '', priority: 'Media', description: '', technicianId: null }; notice.value = `Incidencia #${id} registrada y asignada a ${technicianName(assignedTechnicianId)}.`; goTo('incidents')
 }
-
-async function assignTechnician(incident, technicianId) {
-  const id = technicianId && technicianId !== 'null' ? Number(technicianId) : null
-  try {
-    replaceIncident(incidents.value, await updateIncident(incident.id, { technicianId: id }))
-    syncWorkload()
-    notice.value = id ? `${technicianName(id)} fue asignado a la incidencia #${incident.id}.` : `Se removió el técnico de la incidencia #${incident.id}.`
-  } catch (error) { showError(error); await loadData() }
-}
-
+function assignTechnician(incident, technicianId) { incident.technicianId = technicianId ? Number(technicianId) : null; if (incident.status === 'Pendiente' && technicianId) incident.status = 'En proceso'; syncWorkload(); notice.value = technicianId ? `${technicianName(Number(technicianId))} fue asignado a la incidencia #${incident.id}.` : `Se removió el técnico de la incidencia #${incident.id}.` }
 function openEditor(incident) { editingIncident.value = { ...incident } }
-
-async function saveIncident() {
-  const draft = editingIncident.value
-  try {
-    const updated = await updateIncident(draft.id, {
-      title: draft.title, category: draft.category, priority: draft.priority, status: draft.status, description: draft.description,
-      technicianId: draft.technicianId ? Number(draft.technicianId) : null
-    })
-    replaceIncident(incidents.value, updated)
-    selectedIncident.value = { ...updated }; syncWorkload(); notice.value = `Incidencia #${draft.id} actualizada.`; editingIncident.value = null
-  } catch (error) { showError(error) }
-}
-
+function saveIncident() { const index = incidents.value.findIndex(i => i.id === editingIncident.value.id); incidents.value[index] = { ...editingIncident.value, technicianId: editingIncident.value.technicianId ? Number(editingIncident.value.technicianId) : null }; selectedIncident.value = { ...incidents.value[index] }; syncWorkload(); notice.value = `Incidencia #${editingIncident.value.id} actualizada.`; editingIncident.value = null }
 function goTo(section) { activeSection.value = section; document.getElementById(section)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
-async function handleLogout() { await logout(); router.push({ name: 'Landing' }) }
-
-onMounted(loadData)
+function handleLogout() { logout(); router.push({ name: 'Landing' }) }
 </script>
 
 <template>

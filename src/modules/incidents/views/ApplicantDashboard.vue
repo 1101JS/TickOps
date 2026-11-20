@@ -1,50 +1,31 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import ApplicantFramework from '../../applicant/framework.vue'
 import '../styles/RoleViews.css'
-import { createIncident, getIncidents } from '../../../services/IncidentService.js'
+import { createIncident, getIncidents, technicians } from '../../../services/IncidentService.js'
+import { getSession } from '../../../services/AuthService.js'
 
-const incidents = ref([])
+const session = getSession()
+const reporter = session?.username || 'usuario'
+const incidents = ref(getIncidents())
 const form = ref({ title: '', category: '', priority: 'Media', description: '' })
 const notice = ref('')
 const selectedId = ref(null)
-const sending = ref(false)
 
-// El servidor ya devuelve solo las incidencias del solicitante autenticado.
-const myIncidents = computed(() => incidents.value)
+const myIncidents = computed(() => incidents.value.filter((incident) => incident.reporter === reporter))
 const selectedIncident = computed(() => myIncidents.value.find((incident) => incident.id === selectedId.value))
 
-async function loadIncidents() {
-  try {
-    incidents.value = await getIncidents()
-  } catch (error) {
-    notice.value = error.message
-  }
-}
-
-async function submitIncident() {
-  if (sending.value) return
-  sending.value = true
-  try {
-    const incident = await createIncident(form.value)
-    incidents.value.unshift(incident)
-    form.value = { title: '', category: '', priority: 'Media', description: '' }
-    notice.value = incident.technicianName
-      ? `Tu incidencia #${incident.id} fue enviada y asignada automáticamente a ${incident.technicianName}.`
-      : `Tu incidencia #${incident.id} fue enviada. Pronto será asignada a un técnico.`
-    selectedId.value = incident.id
-  } catch (error) {
-    notice.value = error.message
-  } finally {
-    sending.value = false
-  }
+function submitIncident() {
+  const incident = createIncident({ ...form.value, reporter })
+  incidents.value = getIncidents()
+  form.value = { title: '', category: '', priority: 'Media', description: '' }
+  notice.value = `Tu incidencia #${incident.id} fue enviada y asignada automáticamente a ${technicians.find((item) => item.id === incident.technicianId).name}.`
+  selectedId.value = incident.id
 }
 
 function technicianName(id) {
-  return incidents.value.find((incident) => incident.technicianId === id)?.technicianName || 'Pendiente de asignación'
+  return technicians.find((technician) => technician.id === id)?.name || 'Pendiente de asignación'
 }
-
-onMounted(loadIncidents)
 </script>
 
 <template>
@@ -61,7 +42,7 @@ onMounted(loadIncidents)
           <label>Título<input v-model="form.title" placeholder="Ej. No puedo acceder al sistema" required /></label>
           <div class="two-columns"><label>Categoría<select v-model="form.category" required><option value="">Selecciona una opción</option><option>Hardware</option><option>Software</option><option>Redes</option><option>Accesos</option><option>Otro</option></select></label><label>Prioridad<select v-model="form.priority"><option>Baja</option><option>Media</option><option>Alta</option></select></label></div>
           <label>Descripción<textarea v-model="form.description" placeholder="Indica qué ocurre, dónde sucede y desde cuándo..." required /></label>
-          <button class="primary" type="submit" :disabled="sending">{{ sending ? 'Enviando...' : 'Enviar incidencia' }}</button>
+          <button class="primary" type="submit">Enviar incidencia</button>
         </form>
       </section>
 
