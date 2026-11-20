@@ -1,83 +1,51 @@
-const INCIDENTS_KEY = 'eticket-incidents'
+import { api } from './api.js'
 
-const INITIAL_INCIDENTS = [
-  {
-    id: 103,
-    title: 'Sin conexión a internet',
-    category: 'Redes',
-    status: 'Pendiente',
-    priority: 'Alta',
-    description: 'El aula 203 no tiene conexión a la red institucional desde esta mañana.',
-    createdAt: '14 nov 2026',
-    reporter: 'Usuario final',
-    technicianId: 1,
-    updates: []
-  },
-  {
-    id: 98,
-    title: 'Error en el sistema',
-    category: 'Software',
-    status: 'Resuelta',
-    priority: 'Alta',
-    description: 'El sistema institucional mostraba un error al guardar los cambios.',
-    createdAt: '12 nov 2026',
-    reporter: 'Usuario final',
-    technicianId: 2,
-    updates: [{ date: '12 nov 2026', text: 'Incidencia resuelta y validada.' }]
-  }
-]
+const dateFormat = new Intl.DateTimeFormat('es-HN', { dateStyle: 'medium' })
+const dateTimeFormat = new Intl.DateTimeFormat('es-HN', { dateStyle: 'medium', timeStyle: 'short' })
 
-export const technicians = [
-  { id: 1, name: 'Ana López', specialty: 'Hardware y redes' },
-  { id: 2, name: 'Carlos Mejía', specialty: 'Software' },
-  { id: 3, name: 'María García', specialty: 'Redes' },
-  { id: 4, name: 'José Rivera', specialty: 'Soporte general' }
-]
-
-function clone(items) {
-  return JSON.parse(JSON.stringify(items))
+function format(formatter, iso) {
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? iso : formatter.format(date)
 }
 
-export function getIncidents() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(INCIDENTS_KEY))
-    return Array.isArray(saved) ? saved : clone(INITIAL_INCIDENTS)
-  } catch {
-    return clone(INITIAL_INCIDENTS)
+// Adapta la respuesta de la API al formato que ya usan las vistas (fechas legibles).
+function normalize(ticket) {
+  return {
+    ...ticket,
+    createdAtIso: ticket.createdAt,
+    createdAt: format(dateFormat, ticket.createdAt),
+    updates: (ticket.updates || []).map((update) => ({ ...update, date: format(dateTimeFormat, update.date) }))
   }
 }
 
-export function saveIncidents(incidents) {
-  localStorage.setItem(INCIDENTS_KEY, JSON.stringify(incidents))
+export async function getIncidents() {
+  const data = await api('/tickets')
+  return data.tickets.map(normalize)
 }
 
-export function getLeastBusyTechnicianId(incidents = getIncidents()) {
-  return technicians
-    .map((technician) => ({
-      id: technician.id,
-      workload: incidents.filter((incident) => incident.technicianId === technician.id && incident.status !== 'Resuelta').length
-    }))
-    .sort((a, b) => a.workload - b.workload || a.id - b.id)[0].id
+export async function createIncident({ title, category, priority, description, technicianId }) {
+  const data = await api('/tickets', { method: 'POST', body: { title, category, priority, description, technicianId } })
+  return normalize(data.ticket)
 }
 
-export function createIncident(data) {
-  const incidents = getIncidents()
-  const id = Math.max(0, ...incidents.map((incident) => incident.id)) + 1
-  const technicianId = getLeastBusyTechnicianId(incidents)
-  const incident = {
-    id,
-    title: data.title.trim(),
-    category: data.category,
-    priority: data.priority,
-    description: data.description.trim(),
-    reporter: data.reporter || 'Usuario final',
-    createdAt: new Intl.DateTimeFormat('es-HN', { dateStyle: 'medium' }).format(new Date()),
-    technicianId,
-    status: 'Pendiente',
-    updates: [{ date: 'Ahora', text: 'Incidencia registrada y asignada automáticamente.' }]
-  }
+export async function updateIncident(id, changes) {
+  const data = await api(`/tickets/${id}`, { method: 'PATCH', body: changes })
+  return normalize(data.ticket)
+}
 
-  incidents.unshift(incident)
-  saveIncidents(incidents)
-  return incident
+export async function addIncidentUpdate(id, text) {
+  const data = await api(`/tickets/${id}/updates`, { method: 'POST', body: { text } })
+  return normalize(data.ticket)
+}
+
+export async function getTechnicians() {
+  const data = await api('/technicians')
+  return data.technicians
+}
+
+// Reemplaza una incidencia dentro de una lista reactiva por su versión actualizada del servidor.
+export function replaceIncident(list, ticket) {
+  const index = list.findIndex((item) => item.id === ticket.id)
+  if (index === -1) list.unshift(ticket)
+  else list[index] = ticket
 }

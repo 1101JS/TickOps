@@ -10,8 +10,8 @@ const props = defineProps({
 
 const router = useRouter()
 
-function signOut() {
-  logout()
+async function signOut() {
+  await logout()
   router.push({ name: 'Landing' })
 }
 </script>

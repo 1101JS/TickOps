@@ -1,39 +1,52 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import TechnicianFramework from '../../technician/framework.vue'
 import '../styles/RoleViews.css'
-import { getIncidents, saveIncidents, technicians } from '../../../services/IncidentService.js'
+import { addIncidentUpdate, getIncidents, replaceIncident, updateIncident } from '../../../services/IncidentService.js'
 import { getSession } from '../../../services/AuthService.js'
 
 const session = getSession()
-const technicianId = session?.technicianId || 1
-const technician = technicians.find((item) => item.id === technicianId) || technicians[0]
-const incidents = ref(getIncidents())
+const technician = { id: session?.id, name: session?.name || 'Técnico', specialty: session?.specialty || '' }
+const incidents = ref([])
 const selectedId = ref(null)
 const updateText = ref('')
 const notice = ref('')
 
-const assignments = computed(() => incidents.value.filter((incident) => incident.technicianId === technician.id))
+// El servidor ya devuelve solo las incidencias asignadas a este técnico.
+const assignments = computed(() => incidents.value)
 const activeAssignments = computed(() => assignments.value.filter((incident) => incident.status !== 'Resuelta'))
 const selectedIncident = computed(() => assignments.value.find((incident) => incident.id === selectedId.value))
 
-function setStatus(incident, status) {
-  incident.status = status
-  incident.updates ||= []
-  incident.updates.unshift({ date: 'Ahora', text: `Estado actualizado a ${status}.` })
-  saveIncidents(incidents.value)
-  notice.value = `La incidencia #${incident.id} fue actualizada.`
+async function loadIncidents() {
+  try {
+    incidents.value = await getIncidents()
+  } catch (error) {
+    notice.value = error.message
+  }
 }
 
-function addUpdate() {
-  if (!selectedIncident.value || !updateText.value.trim()) return
-  selectedIncident.value.updates ||= []
-  selectedIncident.value.updates.unshift({ date: 'Ahora', text: updateText.value.trim() })
-  if (selectedIncident.value.status === 'Pendiente') selectedIncident.value.status = 'En proceso'
-  saveIncidents(incidents.value)
-  updateText.value = ''
-  notice.value = 'Seguimiento guardado correctamente.'
+async function setStatus(incident, status) {
+  try {
+    replaceIncident(incidents.value, await updateIncident(incident.id, { status }))
+    notice.value = `La incidencia #${incident.id} fue actualizada.`
+  } catch (error) {
+    notice.value = error.message
+    await loadIncidents()
+  }
 }
+
+async function addUpdate() {
+  if (!selectedIncident.value || !updateText.value.trim()) return
+  try {
+    replaceIncident(incidents.value, await addIncidentUpdate(selectedIncident.value.id, updateText.value.trim()))
+    updateText.value = ''
+    notice.value = 'Seguimiento guardado correctamente.'
+  } catch (error) {
+    notice.value = error.message
+  }
+}
+
+onMounted(loadIncidents)
 </script>
 
 <template>

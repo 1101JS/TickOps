@@ -6,7 +6,7 @@ import TechnicianDashboard from '../modules/incidents/views/TechnicianDashboard.
 import ApplicantDashboard from '../modules/incidents/views/ApplicantDashboard.vue'
 import LoginView from '../modules/auth/LoginView.vue'
 import LandingView from '../modules/landing/views/LandingView.vue'
-import { getSession, isAuthenticated, routeForRole } from '../services/AuthService.js'
+import { getSession, isAuthenticated, loadSession, routeForRole } from '../services/AuthService.js'
 
 const routes = [
   {
@@ -49,7 +49,9 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
+  // Valida la sesión contra el servidor (cookie HttpOnly) antes de la primera navegación.
+  await loadSession()
   const session = getSession()
 
   if (to.meta.requiresAuth && !isAuthenticated()) {

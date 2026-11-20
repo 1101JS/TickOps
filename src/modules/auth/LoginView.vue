@@ -11,13 +11,13 @@ const password = ref('')
 const error = ref('')
 const isRegister = computed(() => route.name === 'Register')
 
-function handleLogin() {
+async function handleLogin() {
   error.value = ''
-  const session = login(username.value.trim(), password.value)
-  if (session) {
+  try {
+    const session = await login(username.value.trim(), password.value)
     router.push({ name: routeForRole(session.role) })
-  } else {
-    error.value = 'Usuario o contraseña incorrectos.'
+  } catch (err) {
+    error.value = err.message || 'Usuario o contraseña incorrectos.'
   }
 }
 </script>

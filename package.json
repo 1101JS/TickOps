@@ -5,8 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:api": "vite build && wrangler dev --port 8787",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy": "vite build && wrangler deploy",
+    "lan": "node --env-file-if-exists=.env server/node.js",
+    "lan:demo": "node --env-file-if-exists=.env server/node.js --demo"
   },
   "dependencies": {
     "vue": "^3.5.44",
@@ -15,5 +19,8 @@
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.10",
     "vite": "^8.3.6"
+  },
+  "engines": {
+    "node": ">=22.13"
   }
 }
