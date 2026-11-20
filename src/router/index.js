@@ -1,9 +1,12 @@
 
 import { createRouter, createWebHistory } from 'vue-router'
 
+import AdminDashboard from '../modules/incidents/views/AdminDashboard.vue'
+import TechnicianDashboard from '../modules/incidents/views/TechnicianDashboard.vue'
 import ApplicantDashboard from '../modules/incidents/views/ApplicantDashboard.vue'
 import LoginView from '../modules/auth/LoginView.vue'
 import LandingView from '../modules/landing/views/LandingView.vue'
+import { getSession, isAuthenticated, routeForRole } from '../services/AuthService.js'
 
 const routes = [
   {
@@ -18,8 +21,21 @@ const routes = [
   },
   {
     path: '/incidencias',
+    name: 'AdminDashboard',
+    component: AdminDashboard,
+    meta: { requiresAuth: true, roles: ['admin'] }
+  },
+  {
+    path: '/tecnico',
+    name: 'TechnicianDashboard',
+    component: TechnicianDashboard,
+    meta: { requiresAuth: true, roles: ['technician'] }
+  },
+  {
+    path: '/mis-incidencias',
     name: 'ApplicantDashboard',
-    component: ApplicantDashboard
+    component: ApplicantDashboard,
+    meta: { requiresAuth: true, roles: ['applicant'] }
   },
   {
     path: '/registro',
@@ -31,6 +47,24 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes
+})
+
+router.beforeEach((to) => {
+  const session = getSession()
+
+  if (to.meta.requiresAuth && !isAuthenticated()) {
+    return to.name === 'Login' ? undefined : { name: 'Login' }
+  }
+
+  if (to.meta.roles && !to.meta.roles.includes(session?.role)) {
+    const destination = routeForRole(session?.role)
+    return destination === to.name ? undefined : { name: destination }
+  }
+
+  if (to.name === 'Login' && session) {
+    const destination = routeForRole(session.role)
+    return destination === to.name ? undefined : { name: destination }
+  }
 })
 
 export default router
