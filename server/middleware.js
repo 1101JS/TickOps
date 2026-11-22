@@ -1,0 +1,72 @@
+// Middlewares de Express para la API: protección CSRF, sesión, control de roles, JSON y manejo de errores.
+import { HttpError, fromDbError } from './lib/http.js'
+import { SESSION_COOKIE, userFromToken } from './lib/users.js'
+
+export const ALL = ['admin', 'agent', 'applicant']
+export const STAFF = ['admin', 'agent']
+
+function parseCookies(header) {
+  const cookies = {}
+  for (const part of (header || '').split(';')) {
+    const index = part.indexOf('=')
+    if (index > 0) cookies[part.slice(0, index).trim()] = decodeURIComponent(part.slice(index + 1).trim())
+  }
+  return cookies
+}
+
+// Las peticiones que modifican datos deben venir del mismo origen o de uno de confianza
+// (TRUSTED_ORIGINS, p. ej. https://tickops.bid cuando llegan por el túnel).
+export function sameOrigin(req, res, next) {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next()
+  const origin = req.get('origin')
+  if (origin && new URL(origin).host !== req.get('host') && !req.app.locals.config.trustedOrigins.includes(origin)) {
+    throw new HttpError(403, 'Origen no permitido.')
+  }
+  next()
+}
+
+// Lee la cookie de sesión y deja el usuario (o null) en req.user.
+export async function loadUser(req, res, next) {
+  const { db, config } = req.app.locals
+  const token = parseCookies(req.get('cookie'))[SESSION_COOKIE]
+  req.user = token ? await userFromToken(db, token, config.sessionSecret) : null
+  next()
+}
+
+// Exige sesión iniciada y uno de los roles indicados.
+export function requireRole(roles) {
+  return (req, res, next) => {
+    if (!req.user) throw new HttpError(401, 'Debes iniciar sesión.')
+    if (!roles.includes(req.user.role)) throw new HttpError(403, 'No tienes permiso para esta acción.')
+    next()
+  }
+}
+
+// POST/PATCH/PUT deben enviar un objeto JSON (express.json() ya lo convirtió en req.body).
+export function requireJsonObject(req, res, next) {
+  if (!['POST', 'PATCH', 'PUT'].includes(req.method) || req.path === '/auth/logout') return next()
+  if (!req.is('application/json')) throw new HttpError(415, 'Se esperaba un cuerpo JSON.')
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) throw new HttpError(400, 'Se esperaba un objeto JSON.')
+  next()
+}
+
+// Valida que :id sea un número entero positivo; si no, la ruta no existe.
+export function numericId(req, res, next, value) {
+  next(/^\d+$/.test(value) ? undefined : new HttpError(404, 'Ruta no encontrada.'))
+}
+
+export function notFound(req, res) {
+  res.status(404).json({ error: 'Ruta no encontrada.' })
+}
+
+// Manejador final: traduce HttpError, errores de PostgreSQL y JSON mal formado a respuestas comprensibles.
+export function errorHandler(error, req, res, next) {
+  if (res.headersSent) return next(error)
+  if (error.type === 'entity.parse.failed') return res.status(400).json({ error: 'JSON inválido.' })
+  if (error.type === 'entity.too.large') return res.status(413).json({ error: 'El contenido enviado es demasiado grande.' })
+  const known = error instanceof HttpError ? error : fromDbError(error)
+  if (known) return res.status(known.status).json({ error: known.message })
+  console.error(error)
+  const offline = ['ECONNREFUSED', 'ENOTFOUND', '28P01', '3D000'].includes(error.code)
+  res.status(offline ? 503 : 500).json({ error: offline ? 'No se pudo conectar con la base de datos.' : 'Error interno del servidor.' })
+}

@@ -6,6 +6,7 @@ const items = [
   { label: 'Incidencias', to: { name: 'AdminDashboard', hash: '#incidents' } },
   { label: 'Registrar incidencia', to: { name: 'AdminDashboard', hash: '#new-incident' } },
   { label: 'Agentes', to: { name: 'AdminDashboard', hash: '#agents' } },
+  { label: 'Categorías', to: { name: 'AdminDashboard', hash: '#categories' } },
   { label: 'Usuarios', to: { name: 'AdminDashboard', hash: '#users' } }
 ]
 </script>

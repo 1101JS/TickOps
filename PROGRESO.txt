@@ -7,7 +7,8 @@ LO QUE YA ESTÁ HECHO
 1. Base de datos real: el respaldo sistema_incidencias.bak (Descargas) está restaurado en el
    PostgreSQL 19 local, base "sistema_incidencias". Trae solo catálogos (roles, 4 departamentos,
    7 categorías, 5 estados, 4 prioridades con SLA). Al 22-nov ya tiene usuarios e incidencias reales.
-2. Backend reescrito sobre PostgreSQL (server/app.js, db.js, node.js). Ya no usa SQLite ni datos demo.
+2. Backend con Node.js + Express sobre PostgreSQL. Ya no usa SQLite ni datos demo.
+   Estructura: server/app.js (aplicación Express), middleware.js, routes/ (un router por recurso), lib/.
    - Login por correo, sesión en cookie firmada (SESSION_SECRET en .env).
    - Permisos por rol: admin todo, agente su departamento, solicitante lo suyo.
    - Incidencias, comentarios (públicos/internos/resolución), historial, transferencias, usuarios.
@@ -35,6 +36,14 @@ LO QUE YA ESTÁ HECHO
 7. Rutas del frontend: /incidencias (admin), /agente, /mis-incidencias[/nueva], /incidencia/:id.
 8. Existe un usuario administrador para Claude (usuario #7) para revisiones manuales; la clave no se
    guarda en este archivo.
+9. Alineación con la propuesta inicial (documento de Google, 22-oct-2026):
+   - Migración del backend a Express 5 (la propuesta dice "Node.js y Express"): misma API y mismas
+     reglas; routers por recurso y middlewares de sesión, roles, CSRF, JSON y errores.
+   - Gestión de categorías (obligatorio, punto 8 "Administración básica"): sección "Categorías" en el
+     panel del administrador y API /api/categorias. Crear, editar, desactivar/reactivar y eliminar.
+     Reglas: no se mueve de departamento una categoría con incidencias; una categoría usada no se
+     elimina (se desactiva y deja de ofrecerse en incidencias nuevas, conservando su historial).
+   - Probado en una copia temporal de la base (ya borrada): 54 pruebas de API y 10 en navegador, OK.
 
 CÓMO ARRANCAR
 -------------
@@ -65,7 +74,12 @@ LO QUE FALTA
 - Adjuntos (tabla adjuntos): subir/descargar archivos de hasta 5 MB.
 - Artículos FAQ (tabla articulos_faq): pantalla de consulta y edición.
 - Restablecer contraseña por correo (tabla tokens_restablecimiento).
-- Administrar departamentos y categorías desde el panel (hoy solo se ven).
+- Administrar departamentos desde el panel (hoy solo se ven; las categorías ya se administran).
+- Pendientes de la propuesta inicial: respaldo automático de la base (análisis de riesgos), filtros por
+  prioridad/categoría/fecha y contador de resueltas (opcionales), adjuntos, exportar PDF/Excel y avisos
+  por correo (opcionales).
+- UsersView.vue e IncidentHistory.vue (merge del compañero) no tienen ruta y usan datos de ejemplo:
+  integrarlos o borrarlos.
 - Landing: botón "Solicitar información" usa mailto:contacto@tickops.com (dominio incorrecto).
 - Los datos viejos de SQLite (carpeta data/) ya no se usan; se pueden borrar.
 - La landing y el login no tienen modo oscuro: se ven claros aunque el tema elegido sea oscuro.

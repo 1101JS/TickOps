@@ -98,3 +98,23 @@ export async function createUser(user) {
 export async function updateUser(id, changes) {
   return (await api(`/usuarios/${id}`, { method: 'PATCH', body: changes })).usuario
 }
+
+// ---------- Categorías (administración) ----------
+
+export async function getCategories() {
+  return (await api('/categorias')).categorias
+}
+
+// category: { nombre, descripcion, idDepartamento }
+export async function createCategory(category) {
+  return (await api('/categorias', { method: 'POST', body: category })).categoria
+}
+
+// changes: { nombre?, descripcion?, idDepartamento?, activa? }
+export async function updateCategory(id, changes) {
+  return (await api(`/categorias/${id}`, { method: 'PATCH', body: changes })).categoria
+}
+
+export async function deleteCategory(id) {
+  await api(`/categorias/${id}`, { method: 'DELETE' })
+}

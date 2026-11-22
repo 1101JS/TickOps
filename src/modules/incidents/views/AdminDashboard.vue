@@ -5,8 +5,8 @@ import '../styles/AdminDashboard.css'
 import ThemeSwitcher from '../../../components/ThemeSwitcher.vue'
 import { getSession, logout } from '../../../services/AuthService.js'
 import {
-  categoriesByDepartment, createIncident, createUser, formatDate, getAgents, getCatalogs, getIncidents, getUsers,
-  initials, slug, updateUser
+  categoriesByDepartment, createCategory, createIncident, createUser, deleteCategory, formatDate, getAgents, getCatalogs,
+  getCategories, getIncidents, getUsers, initials, slug, updateCategory, updateUser
 } from '../../../services/IncidentService.js'
 
 const ROLES = [
@@ -21,6 +21,7 @@ const catalogs = ref({ departamentos: [], categorias: [], prioridades: [], estad
 const incidents = ref([])
 const agents = ref([])
 const users = ref([])
+const categories = ref([])
 const activeSection = ref('panel')
 const notice = ref('')
 const error = ref('')
@@ -34,6 +35,10 @@ const newIncident = ref(emptyIncident())
 const emptyUser = () => ({ nombre: '', correo: '', password: '', role: 'applicant', idDepartamento: '' })
 const newUser = ref(emptyUser())
 const editingUser = ref(null)
+const emptyCategory = () => ({ nombre: '', descripcion: '', idDepartamento: '' })
+const newCategory = ref(emptyCategory())
+const editingCategory = ref(null)
+const categoryDepartment = ref('')
 
 const categoryGroups = computed(() => categoriesByDepartment(catalogs.value.categorias))
 const open = computed(() => incidents.value.filter((i) => !i.estadoFinal && i.estado !== 'Resuelto'))
@@ -49,6 +54,9 @@ const filteredIncidents = computed(() => {
     return !term || [i.id, i.titulo, i.categoria, i.solicitante, i.agente].join(' ').toLowerCase().includes(term)
   })
 })
+const visibleCategories = computed(() =>
+  categories.value.filter((c) => !categoryDepartment.value || c.departamentoId === Number(categoryDepartment.value))
+)
 const agentsByDepartment = computed(() =>
   catalogs.value.departamentos.map((d) => ({ ...d, agents: agents.value.filter((a) => a.departamentoId === d.id) }))
 )
@@ -58,11 +66,12 @@ function fail(err) { notice.value = ''; error.value = err.message || 'Ocurrió u
 
 async function loadData() {
   try {
-    const [catalog, incidentList, agentList, userList] = await Promise.all([getCatalogs(), getIncidents(), getAgents(), getUsers()])
+    const [catalog, incidentList, agentList, userList, categoryList] = await Promise.all([getCatalogs(), getIncidents(), getAgents(), getUsers(), getCategories()])
     catalogs.value = catalog
     incidents.value = incidentList
     agents.value = agentList
     users.value = userList
+    categories.value = categoryList
     if (!newIncident.value.idPrioridad) newIncident.value = emptyIncident()
   } catch (err) { fail(err) }
 }
@@ -123,6 +132,61 @@ async function toggleActive(target) {
   } catch (err) { fail(err) }
 }
 
+// Tras cambiar categorías se recargan los catálogos (los formularios de incidencias solo ofrecen las activas).
+async function refreshCatalogs() {
+  catalogs.value = await getCatalogs(true).catch(() => catalogs.value)
+}
+
+function replaceCategory(updated) {
+  categories.value = categories.value.map((c) => (c.id === updated.id ? updated : c))
+}
+
+async function submitCategory() {
+  try {
+    const { idDepartamento, ...fields } = newCategory.value
+    const created = await createCategory({ ...fields, idDepartamento: Number(idDepartamento) })
+    categories.value.push(created)
+    categories.value.sort((a, b) => a.departamento.localeCompare(b.departamento) || a.nombre.localeCompare(b.nombre))
+    newCategory.value = emptyCategory()
+    show(`Categoría "${created.nombre}" creada en ${created.departamento}.`)
+    await refreshCatalogs()
+  } catch (err) { fail(err) }
+}
+
+function openCategoryEditor(category) {
+  editingCategory.value = { id: category.id, nombre: category.nombre, descripcion: category.descripcion || '', idDepartamento: category.departamentoId, incidencias: category.incidencias }
+}
+
+async function saveCategory() {
+  const draft = editingCategory.value
+  try {
+    const updated = await updateCategory(draft.id, { nombre: draft.nombre, descripcion: draft.descripcion, idDepartamento: Number(draft.idDepartamento) })
+    replaceCategory(updated)
+    editingCategory.value = null
+    show(`Categoría "${updated.nombre}" actualizada.`)
+    await refreshCatalogs()
+  } catch (err) { fail(err) }
+}
+
+async function toggleCategory(category) {
+  try {
+    const updated = await updateCategory(category.id, { activa: !category.activa })
+    replaceCategory(updated)
+    show(updated.activa ? `Categoría "${updated.nombre}" reactivada.` : `Categoría "${updated.nombre}" desactivada: ya no se ofrecerá en incidencias nuevas.`)
+    await refreshCatalogs()
+  } catch (err) { fail(err) }
+}
+
+async function removeCategory(category) {
+  if (!window.confirm(`¿Eliminar la categoría "${category.nombre}"? Esta acción no se puede deshacer.`)) return
+  try {
+    await deleteCategory(category.id)
+    categories.value = categories.value.filter((c) => c.id !== category.id)
+    show(`Categoría "${category.nombre}" eliminada.`)
+    await refreshCatalogs()
+  } catch (err) { fail(err) }
+}
+
 function goTo(section) { activeSection.value = section; document.getElementById(section)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
 async function handleLogout() { await logout(); router.push({ name: 'Landing' }) }
 
@@ -138,6 +202,7 @@ onMounted(loadData)
         <button class="nav-item" :class="{ active: activeSection === 'incidents' }" @click="goTo('incidents')">▤ Incidencias</button>
         <button class="nav-item" :class="{ active: activeSection === 'new-incident' }" @click="goTo('new-incident')">＋ Registrar incidencia</button>
         <button class="nav-item" :class="{ active: activeSection === 'agents' }" @click="goTo('agents')">♙ Agentes</button>
+        <button class="nav-item" :class="{ active: activeSection === 'categories' }" @click="goTo('categories')">▦ Categorías</button>
         <button class="nav-item" :class="{ active: activeSection === 'users' }" @click="goTo('users')">⚙ Usuarios</button>
       </nav>
       <div class="sidebar-theme"><ThemeSwitcher /></div>
@@ -210,6 +275,36 @@ onMounted(loadData)
         </div>
       </section>
 
+      <section id="categories" class="card section-anchor">
+        <div class="section-heading"><div><p class="eyebrow">CLASIFICACIÓN</p><h2>Categorías</h2></div><span class="section-note">La categoría decide qué departamento atiende cada incidencia.</span></div>
+        <form class="incident-form user-form" @submit.prevent="submitCategory"><div class="form-grid">
+          <label>Nombre<input v-model="newCategory.nombre" maxlength="80" placeholder="Ej. Impresoras" required /></label>
+          <label>Departamento<select v-model="newCategory.idDepartamento" required><option value="">Seleccione...</option><option v-for="d in catalogs.departamentos" :key="d.id" :value="d.id">{{ d.nombre }}</option></select></label>
+          <label class="form-full">Descripción <span class="optional">(opcional; ayuda al solicitante a elegir)</span><input v-model="newCategory.descripcion" maxlength="200" placeholder="Qué tipo de problemas entran en esta categoría" /></label>
+        </div><button type="submit" class="primary-button">Crear categoría</button></form>
+
+        <div class="toolbar">
+          <select v-model="categoryDepartment" aria-label="Filtrar categorías por departamento"><option value="">Todos los departamentos</option><option v-for="d in catalogs.departamentos" :key="d.id" :value="d.id">{{ d.nombre }}</option></select>
+        </div>
+        <div class="incident-table-wrap"><table class="incident-table">
+          <thead><tr><th>Categoría</th><th>Departamento</th><th>Incidencias</th><th>Estado</th><th></th></tr></thead>
+          <tbody>
+            <tr v-for="c in visibleCategories" :key="c.id" :class="{ inactive: !c.activa }">
+              <td><strong>{{ c.nombre }}</strong><small>{{ c.descripcion || 'Sin descripción' }}</small></td>
+              <td>{{ c.departamento }}</td>
+              <td><strong>{{ c.incidencias }}</strong><small>{{ c.abiertas }} abierta(s)</small></td>
+              <td><span class="status-pill" :class="c.activa ? 'resuelto' : 'cerrado'">{{ c.activa ? 'Activa' : 'Inactiva' }}</span></td>
+              <td class="table-actions">
+                <button class="text-button" @click="openCategoryEditor(c)">Editar</button>
+                <button class="text-button" @click="toggleCategory(c)">{{ c.activa ? 'Desactivar' : 'Reactivar' }}</button>
+                <button v-if="!c.enUso" class="text-button danger-text" @click="removeCategory(c)">Eliminar</button>
+              </td>
+            </tr>
+            <tr v-if="!visibleCategories.length"><td colspan="5" class="empty-state">No hay categorías en este departamento.</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
       <section id="users" class="card section-anchor">
         <div class="section-heading"><div><p class="eyebrow">ACCESOS</p><h2>Usuarios</h2></div><span class="section-note">{{ users.length }} cuenta(s)</span></div>
         <form class="incident-form user-form" @submit.prevent="submitUser"><div class="form-grid">
@@ -239,6 +334,23 @@ onMounted(loadData)
         </table></div>
       </section>
     </section>
+
+    <div v-if="editingCategory" class="details-backdrop" @click.self="editingCategory = null">
+      <section class="details-panel" role="dialog" aria-modal="true" aria-label="Editar categoría">
+        <header class="details-header"><div><span class="details-kicker">CATEGORÍA</span><h2>Editar {{ editingCategory.nombre }}</h2></div><button class="details-close" @click="editingCategory = null">×</button></header>
+        <form class="edit-form" @submit.prevent="saveCategory">
+          <div class="form-grid compact">
+            <label>Nombre<input v-model="editingCategory.nombre" maxlength="80" required /></label>
+            <label>Departamento
+              <select v-model="editingCategory.idDepartamento" :disabled="editingCategory.incidencias > 0" required><option v-for="d in catalogs.departamentos" :key="d.id" :value="d.id">{{ d.nombre }}</option></select>
+            </label>
+          </div>
+          <p v-if="editingCategory.incidencias > 0" class="section-note">Tiene {{ editingCategory.incidencias }} incidencia(s): no se puede mover a otro departamento.</p>
+          <label>Descripción <span class="optional">(opcional)</span><input v-model="editingCategory.descripcion" maxlength="200" /></label>
+          <footer class="details-footer"><button type="button" class="details-done secondary-button" @click="editingCategory = null">Cancelar</button><button type="submit" class="details-done">Guardar cambios</button></footer>
+        </form>
+      </section>
+    </div>
 
     <div v-if="editingUser" class="details-backdrop" @click.self="editingUser = null">
       <section class="details-panel" role="dialog" aria-modal="true" aria-label="Editar usuario">

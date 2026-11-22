@@ -5,13 +5,18 @@ El backend trabaja sobre la base PostgreSQL **sistema_incidencias**: el navegado
 
 ```
 src/        Frontend Vue 3 + Vite (landing, login, paneles por rol)
-server/
-  app.js          API REST (Request → Response): sesión, permisos por rol y consultas a PostgreSQL
+server/             Backend Node.js + Express
+  app.js          Crea la aplicación Express de la API REST y monta middlewares y routers
+  middleware.js   CSRF, sesión (req.user), control de roles, validación de JSON y manejo de errores
+  routes/         Un router por recurso: auth, catalogos, incidencias, categorias, usuarios (y agentes)
+  lib/http.js     Errores HTTP, validación de datos y traducción de errores de PostgreSQL
+  lib/users.js    Usuarios, sesión firmada y límite de intentos de login
+  lib/incidents.js Reglas de incidencias: permisos por rol, estados permitidos, SLA e historial
+  lib/crypto.js   Contraseñas PBKDF2 y cookies de sesión firmadas (HMAC)
   db.js           Conexión a PostgreSQL (paquete pg, variables PG* del .env)
-  node.js         Servidor local: API + frontend compilado (dist/)
+  node.js         Servidor local: API Express + frontend compilado (dist/)
   crear-admin.js  Crea un administrador desde la consola
   worker.js       Cloudflare (tickops.bid): sirve el sitio y reenvía /api al túnel de la PC
-  lib/crypto.js   Contraseñas PBKDF2 y cookies de sesión firmadas (HMAC)
 iniciar-tickops.bat  Arranca todo en la PC (PostgreSQL + túnel + API); hay un acceso directo en el escritorio
 ```
 

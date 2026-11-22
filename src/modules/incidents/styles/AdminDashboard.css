@@ -185,3 +185,12 @@
 .dashboard-sidebar .sidebar-theme + .logout-button {
   margin-top: 0;
 }
+
+/* Acción destructiva en tablas (p. ej. eliminar categoría) */
+.text-button.danger-text {
+  color: #dc2626;
+}
+
+:root[data-theme="dark"] .text-button.danger-text {
+  color: #f87171;
+}
