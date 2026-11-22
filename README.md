@@ -14,7 +14,9 @@ server/             Backend Node.js + Express
   lib/incidents.js Reglas de incidencias: permisos por rol, estados permitidos, SLA e historial
   lib/crypto.js   Contraseñas PBKDF2 y cookies de sesión firmadas (HMAC)
   db.js           Conexión a PostgreSQL (paquete pg, variables PG* del .env)
-  node.js         Servidor local: API Express + frontend compilado (dist/)
+  backup.js       Respaldo cifrado de la base (pg_dump + AES-256-GCM) y retención
+  respaldo.js     Comandos de consola: npm run respaldo / descifrar-respaldo
+  node.js         Servidor local: API Express + frontend compilado (dist/) + respaldo automático
   crear-admin.js  Crea un administrador desde la consola
   worker.js       Cloudflare (tickops.bid): sirve el sitio y reenvía /api al túnel de la PC
 iniciar-tickops.bat  Arranca todo en la PC (PostgreSQL + túnel + API); hay un acceso directo en el escritorio
@@ -34,6 +36,10 @@ Requisitos: Node 22.13+ y PostgreSQL con la base `sistema_incidencias` restaurad
    PGDATABASE=sistema_incidencias
    SESSION_SECRET=una-cadena-larga-y-aleatoria
    ALLOW_REGISTRATION=false
+   # Respaldo automático (opcional; ver "Respaldos")
+   BACKUP_DIR=C:\Users\<usuario>\OneDrive\Respaldos TickOps
+   BACKUP_PASSWORD=otra-cadena-larga-y-aleatoria
+   BACKUP_KEEP=14
    ```
 
 2. Instala dependencias y crea el primer administrador:
@@ -68,6 +74,30 @@ Navegador → tickops.bid (Worker) → /api → túnel Cloudflare "tickops" (ori
 - El túnel sale desde la PC (no se abren puertos) y solo deja pasar rutas `/api/`; PostgreSQL no se publica.
 - Configuración del túnel en `%USERPROFILE%\.cloudflared\config.yml`; la API acepta el origen de `TRUSTED_ORIGINS` (.env).
 - Con la PC apagada el sitio carga, pero la API responde "El servidor de TickOps está apagado".
+
+## Respaldos
+
+Mientras TickOps está encendido, el servidor revisa al arrancar y cada hora: si el último respaldo tiene 24 h o más,
+crea uno nuevo en `BACKUP_DIR` (`tickops-AAAA-MM-DD_HHMMSS.dump.enc`) y conserva los últimos `BACKUP_KEEP`.
+El archivo es un `pg_dump` cifrado con AES-256-GCM usando `BACKUP_PASSWORD`.
+
+- **Guarda `BACKUP_PASSWORD` fuera de la PC** (gestor de contraseñas): si el disco falla, sin esa clave los respaldos de la nube no sirven.
+- `BACKUP_DIR` puede ser cualquier carpeta sincronizada (OneDrive, Google Drive para escritorio, etc.); cambiar de servicio es cambiar esa línea.
+
+```bash
+npm run respaldo                               # crear uno ahora
+npm run respaldo -- listar                     # ver los guardados
+npm run descifrar-respaldo -- "ruta\archivo.dump.enc"   # descifrar y ver cómo restaurar
+```
+
+Restaurar (en una base nueva, sin tocar la actual):
+
+```bash
+createdb sistema_incidencias_restaurada
+pg_restore --no-owner -d sistema_incidencias_restaurada "ruta\archivo.dump"
+```
+
+Luego se revisa y, si está bien, se apunta `PGDATABASE` a la base restaurada. Borra el `.dump` descifrado al terminar.
 
 ## Roles
 

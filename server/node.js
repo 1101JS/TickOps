@@ -2,12 +2,14 @@
 //   npm run build && npm run lan
 // Variables (.env): PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE (conexión a PostgreSQL),
 //                   SESSION_SECRET, PORT (3000), HOST (0.0.0.0), ALLOW_REGISTRATION (false), PBKDF2_ITERATIONS (100000)
+//                   BACKUP_DIR, BACKUP_PASSWORD, BACKUP_KEEP (14): respaldo automático cifrado (ver backup.js)
 import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { dirname, extname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import express from 'express'
 import { createApp, readConfig } from './app.js'
+import { scheduleBackups } from './backup.js'
 import { createDb } from './db.js'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -52,4 +54,5 @@ app.listen(port, host, async () => {
   } catch (error) {
     console.error(`Error: no se pudo conectar a PostgreSQL (${error.message}). Revisa los datos PG* del archivo .env.`)
   }
+  scheduleBackups()
 })

@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "deploy": "vite build && wrangler deploy",
     "lan": "node --env-file-if-exists=.env server/node.js",
-    "crear-admin": "node --env-file-if-exists=.env server/crear-admin.js"
+    "crear-admin": "node --env-file-if-exists=.env server/crear-admin.js",
+    "respaldo": "node --env-file-if-exists=.env server/respaldo.js",
+    "descifrar-respaldo": "node --env-file-if-exists=.env server/respaldo.js descifrar"
   },
   "dependencies": {
     "express": "^5.3.0",

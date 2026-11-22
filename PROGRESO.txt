@@ -44,6 +44,15 @@ LO QUE YA ESTÁ HECHO
      Reglas: no se mueve de departamento una categoría con incidencias; una categoría usada no se
      elimina (se desactiva y deja de ofrecerse en incidencias nuevas, conservando su historial).
    - Probado en una copia temporal de la base (ya borrada): 54 pruebas de API y 10 en navegador, OK.
+   - Respaldo automático cifrado (análisis de riesgos de la propuesta): server/backup.js.
+     pg_dump + AES-256-GCM; al arrancar TickOps y cada hora revisa si el último tiene 24 h o más; conserva 14.
+     Destino actual: C:\Users\Daniel\OneDrive\Respaldos TickOps (BACKUP_DIR en .env).
+     Plan: pasar a una cuenta de Google dedicada con Google Drive para escritorio (aún no instalado) y,
+     más adelante, a un servicio de respaldo en la nube. Solo hay que cambiar BACKUP_DIR.
+     La clave BACKUP_PASSWORD está en .env: GUARDARLA TAMBIÉN FUERA DE LA PC.
+     Comandos: npm run respaldo | npm run respaldo -- listar | npm run descifrar-respaldo -- <archivo>.
+     Probado: respaldo real de la base, descifrado y restaurado en una base temporal con los mismos
+     datos (usuarios, incidencias, comentarios, historial, categorías y triggers); retención y clave incorrecta.
 
 CÓMO ARRANCAR
 -------------
@@ -75,7 +84,8 @@ LO QUE FALTA
 - Artículos FAQ (tabla articulos_faq): pantalla de consulta y edición.
 - Restablecer contraseña por correo (tabla tokens_restablecimiento).
 - Administrar departamentos desde el panel (hoy solo se ven; las categorías ya se administran).
-- Pendientes de la propuesta inicial: respaldo automático de la base (análisis de riesgos), filtros por
+- Respaldos: instalar Google Drive para escritorio con la cuenta dedicada y cambiar BACKUP_DIR.
+- Pendientes de la propuesta inicial: filtros por
   prioridad/categoría/fecha y contador de resueltas (opcionales), adjuntos, exportar PDF/Excel y avisos
   por correo (opcionales).
 - UsersView.vue e IncidentHistory.vue (merge del compañero) no tienen ruta y usan datos de ejemplo:
