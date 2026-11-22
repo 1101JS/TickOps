@@ -1,5 +1,5 @@
 <script setup>
-// Ficha de una incidencia (modal) compartida por los tres roles.
+// Ficha de una incidencia compartida por los tres roles (se muestra en la ruta /incidencia/:id).
 // Qué botones aparecen lo decide el servidor en "incidencia.acciones"; aquí no se repiten las reglas.
 import { computed, onMounted, ref, watch } from 'vue'
 import {
@@ -10,7 +10,8 @@ const props = defineProps({
   incidentId: { type: Number, required: true },
   user: { type: Object, required: true }
 })
-const emit = defineEmits(['close', 'changed'])
+// "removed": el usuario ya no puede ver la incidencia (p. ej. la transfirió a otro departamento).
+const emit = defineEmits(['removed'])
 
 const inc = ref(null)
 const catalogs = ref({ categorias: [], prioridades: [] })
@@ -19,9 +20,12 @@ const loading = ref(true)
 const busy = ref(false)
 const error = ref('')
 const notice = ref('')
+// Dónde mostrar el último aviso/error: junto a la sección que lo provocó, para que se vea sin desplazarse.
+const feedbackAt = ref('top')
 
 const transition = ref(null)
 const transitionComment = ref('')
+const transitionAgent = ref('')
 const comment = ref({ contenido: '', tipo: 'publico' })
 const transfer = ref({ idCategoria: '', motivo: '' })
 
@@ -31,6 +35,8 @@ const hasResolution = computed(() => inc.value?.comentarios.some((c) => c.esReso
 const sameDepartmentCategories = computed(() => catalogs.value.categorias.filter((c) => c.departamentoId === inc.value?.departamentoId))
 const otherDepartmentGroups = computed(() => categoriesByDepartment(catalogs.value.categorias.filter((c) => c.departamentoId !== inc.value?.departamentoId)))
 
+// Para poner En Proceso una incidencia sin agente, el administrador debe elegir quién la atiende.
+const needsAgent = computed(() => transition.value === 'En Proceso' && !inc.value?.agenteId && manages.value && props.user.role === 'admin')
 const reopening = computed(() => transition.value === 'En Proceso' && inc.value?.estado === 'Resuelto')
 const commentRequired = computed(() =>
   transition.value === 'Rechazado' || (transition.value === 'Resuelto' && !hasResolution.value) || (reopening.value && !manages.value)
@@ -76,20 +82,19 @@ async function loadAgents() {
 }
 
 // Ejecuta una acción contra la API y refresca la ficha con lo que devuelve el servidor.
-async function run(action, message) {
+async function run(action, message, where = 'top') {
   if (busy.value) return
   busy.value = true
   error.value = ''
   notice.value = ''
+  feedbackAt.value = where
   try {
     const result = await action()
     if (result === null) {
-      emit('changed', null, props.incidentId)
-      emit('close')
+      emit('removed', props.incidentId)
       return
     }
     inc.value = result
-    emit('changed', result, result.id)
     notice.value = message
     return true
   } catch (err) {
@@ -99,20 +104,23 @@ async function run(action, message) {
   }
 }
 
-function change(changes, message = 'Cambios guardados.') {
-  return run(() => updateIncident(inc.value.id, changes), message)
+function change(changes, message = 'Cambios guardados.', where = 'manage') {
+  return run(() => updateIncident(inc.value.id, changes), message, where)
 }
 
 function startTransition(target) {
   transition.value = target
   transitionComment.value = ''
+  transitionAgent.value = ''
+  if (feedbackAt.value === 'actions') error.value = ''
 }
 
 async function applyTransition() {
-  const ok = await change(
-    { estado: transition.value, ...(transitionComment.value.trim() ? { comentario: transitionComment.value.trim() } : {}) },
-    `Estado actualizado a ${transition.value}.`
-  )
+  const changes = { estado: transition.value }
+  const text = transitionComment.value.trim()
+  if (text) changes.comentario = text
+  if (needsAgent.value) changes.idAgente = Number(transitionAgent.value)
+  const ok = await change(changes, `Estado actualizado a ${transition.value}.`, 'actions')
   if (ok) transition.value = null
 }
 
@@ -120,7 +128,8 @@ async function sendComment() {
   const { contenido, tipo } = comment.value
   const ok = await run(
     () => addComment(inc.value.id, { contenido: contenido.trim(), esInterno: tipo === 'interno', esResolucion: tipo === 'resolucion' }),
-    'Comentario agregado.'
+    'Comentario agregado.',
+    'comments'
   )
   if (ok) comment.value = { contenido: '', tipo: 'publico' }
 }
@@ -128,7 +137,8 @@ async function sendComment() {
 async function sendTransfer() {
   const ok = await run(
     () => transferIncident(inc.value.id, { idCategoria: Number(transfer.value.idCategoria), motivo: transfer.value.motivo.trim() }),
-    'Incidencia transferida.'
+    'Incidencia transferida.',
+    'transfer'
   )
   if (ok) {
     transfer.value = { idCategoria: '', motivo: '' }
@@ -141,18 +151,18 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="idt-backdrop" @click.self="emit('close')">
-    <section class="idt-panel" role="dialog" aria-modal="true" :aria-label="`Incidencia #${incidentId}`">
+  <article class="idt-page" :aria-label="`Incidencia #${incidentId}`">
       <header class="idt-header">
         <div>
           <span class="idt-kicker">INCIDENCIA #{{ incidentId }}</span>
-          <h2>{{ inc?.titulo || 'Cargando…' }}</h2>
+          <h1>{{ inc?.titulo || (loading ? 'Cargando…' : 'Incidencia no disponible') }}</h1>
         </div>
-        <button class="idt-close" type="button" aria-label="Cerrar" @click="emit('close')">×</button>
       </header>
 
-      <p v-if="error" class="idt-alert error" role="alert">{{ error }}</p>
-      <p v-if="notice && !error" class="idt-alert ok" role="status">{{ notice }}</p>
+      <template v-if="feedbackAt === 'top'">
+        <p v-if="error" class="idt-alert error" role="alert">{{ error }}</p>
+        <p v-if="notice && !error" class="idt-alert ok" role="status">{{ notice }}</p>
+      </template>
       <p v-if="loading" class="idt-muted">Cargando…</p>
 
       <template v-if="inc && !loading">
@@ -189,16 +199,31 @@ onMounted(load)
           </div>
           <p v-if="inc.reabrirHasta && isOwner" class="idt-muted">Si el problema continúa, puedes reabrirla hasta el {{ formatDateTime(inc.reabrirHasta) }}.</p>
           <form v-if="transition" class="idt-form" @submit.prevent="applyTransition">
+            <label v-if="needsAgent">Agente que la atenderá
+              <select v-model="transitionAgent" required>
+                <option value="" disabled>Selecciona un agente…</option>
+                <option v-for="a in agents" :key="a.id" :value="a.id">{{ a.nombre }} · {{ a.carga }} abierta(s)</option>
+              </select>
+              <small v-if="!agents.length" class="idt-muted">No hay agentes activos en {{ inc.departamento }}; crea uno en Usuarios para poder atenderla.</small>
+            </label>
             <label>{{ commentLabel }}<textarea v-model="transitionComment" :required="commentRequired" maxlength="5000" /></label>
             <div class="idt-buttons">
-              <button class="idt-btn primary" type="submit" :disabled="busy">Confirmar: {{ transitionLabel(transition) }}</button>
+              <button class="idt-btn primary" type="submit" :disabled="busy || (needsAgent && !agents.length)">{{ busy ? 'Guardando…' : `Confirmar: ${transitionLabel(transition)}` }}</button>
               <button class="idt-btn" type="button" @click="transition = null">Cancelar</button>
             </div>
           </form>
+          <template v-if="feedbackAt === 'actions'">
+            <p v-if="error" class="idt-alert error" role="alert">{{ error }}</p>
+            <p v-if="notice && !error" class="idt-alert ok" role="status">{{ notice }}</p>
+          </template>
         </section>
 
         <section v-if="inc.acciones.gestionar" class="idt-block">
           <h3>Gestión</h3>
+          <template v-if="feedbackAt === 'manage'">
+            <p v-if="error" class="idt-alert error" role="alert">{{ error }}</p>
+            <p v-if="notice && !error" class="idt-alert ok" role="status">{{ notice }}</p>
+          </template>
           <div class="idt-form-grid">
             <label>Prioridad
               <select :value="inc.prioridadId" :disabled="busy" @change="change({ idPrioridad: Number($event.target.value) }, 'Prioridad actualizada.')">
@@ -241,6 +266,7 @@ onMounted(load)
               <label>Motivo<textarea v-model="transfer.motivo" required maxlength="2000" placeholder="Por qué corresponde a otro departamento" /></label>
               <p class="idt-muted">Al transferirla vuelve a Pendiente y queda sin agente en el departamento de destino.</p>
               <button class="idt-btn primary" type="submit" :disabled="busy">Transferir</button>
+              <p v-if="error && feedbackAt === 'transfer'" class="idt-alert error" role="alert">{{ error }}</p>
             </form>
           </details>
         </section>
@@ -263,6 +289,10 @@ onMounted(load)
               <label><input v-model="comment.tipo" type="radio" value="resolucion" /> Comentario de resolución</label>
             </div>
             <button class="idt-btn primary" type="submit" :disabled="busy">Agregar comentario</button>
+            <template v-if="feedbackAt === 'comments'">
+              <p v-if="error" class="idt-alert error" role="alert">{{ error }}</p>
+              <p v-if="notice && !error" class="idt-alert ok" role="status">{{ notice }}</p>
+            </template>
           </form>
         </section>
 
@@ -286,19 +316,16 @@ onMounted(load)
           </ol>
         </section>
       </template>
-    </section>
-  </div>
+  </article>
 </template>
 
 <style scoped>
-.idt-backdrop{--idt-card:#fff;--idt-bg:#f6f8fc;--idt-text:#172033;--idt-muted:#64748b;--idt-border:#e3e9f2;--idt-primary:#2563eb;position:fixed;z-index:30;inset:0;display:grid;place-items:center;padding:20px;background:rgba(8,20,40,.52);backdrop-filter:blur(4px)}
-:root[data-theme="dark"] .idt-backdrop{--idt-card:#172238;--idt-bg:#0f172a;--idt-text:#f1f5f9;--idt-muted:#9aa9bf;--idt-border:#2e3b53;--idt-primary:#60a5fa}
-.idt-panel,.idt-panel *{box-sizing:border-box}
-.idt-panel{width:min(100%,760px);max-height:92vh;overflow:auto;padding:24px;border:1px solid var(--idt-border);border-radius:16px;background:var(--idt-card);color:var(--idt-text);box-shadow:0 28px 90px rgba(8,20,40,.3);font-family:Arial,sans-serif}
+.idt-page{--idt-card:var(--role-card,#fff);--idt-bg:var(--role-field,#f8fafc);--idt-text:var(--role-text,#172033);--idt-muted:var(--role-muted,#64748b);--idt-border:var(--role-border,#e3e9f2);--idt-primary:var(--role-primary,#2563eb)}
+.idt-page,.idt-page *{box-sizing:border-box}
+.idt-page{width:100%;max-width:1000px;padding:28px;border:1px solid var(--idt-border);border-radius:14px;background:var(--idt-card);color:var(--idt-text);box-shadow:var(--role-shadow,none);font-family:Arial,sans-serif}
 .idt-header{display:flex;justify-content:space-between;gap:16px;padding-bottom:16px;border-bottom:1px solid var(--idt-border)}
-.idt-header h2{margin:6px 0 0;font-size:20px;overflow-wrap:anywhere}
+.idt-header h1{margin:6px 0 0;color:var(--idt-text);font-size:26px;font-weight:700;line-height:1.25;overflow-wrap:anywhere}
 .idt-kicker{color:var(--idt-primary);font-size:10px;font-weight:800;letter-spacing:1.2px}
-.idt-close{flex:0 0 34px;height:34px;border:1px solid var(--idt-border);border-radius:8px;background:var(--idt-bg);color:var(--idt-muted);font-size:21px;cursor:pointer}
 .idt-alert{margin:14px 0 0;padding:10px 12px;border-radius:8px;font-size:13px;line-height:1.5}
 .idt-alert.error{background:#fee2e2;color:#991b1b}.idt-alert.ok{background:#dcfce7;color:#166534}
 .idt-muted{margin:8px 0 0;color:var(--idt-muted);font-size:12px;line-height:1.5}
@@ -333,6 +360,6 @@ details summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--idt-pr
 .idt-timeline{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
 .idt-timeline li{padding:9px 12px;border-left:3px solid #93c5fd;background:var(--idt-bg)}
 .idt-timeline span{color:var(--idt-muted);font-size:11px;font-weight:700}.idt-timeline p{margin:4px 0 0;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
-@media(max-width:720px){.idt-panel{padding:18px 16px}.idt-grid{grid-template-columns:1fr 1fr}.idt-form-grid{grid-template-columns:1fr}}
-@media(max-width:420px){.idt-backdrop{padding:8px}.idt-grid{grid-template-columns:1fr}}
+@media(max-width:720px){.idt-page{padding:18px 16px}.idt-grid{grid-template-columns:1fr 1fr}.idt-form-grid{grid-template-columns:1fr}}
+@media(max-width:420px){.idt-grid{grid-template-columns:1fr}}
 </style>

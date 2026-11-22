@@ -175,3 +175,13 @@
 .dashboard .section-heading h2{margin:4px 0 0;font:700 20px/1.25 Arial,sans-serif;letter-spacing:0;color:var(--dash-text)}
 .incident-table td{color:var(--dash-text);font-size:13px}
 @media(max-width:760px){.dashboard .section-heading{margin-bottom:18px}}
+
+/* Selector de tema en la barra lateral */
+.dashboard-sidebar .sidebar-theme {
+  margin-top: auto;
+  padding: 0 10px 12px;
+}
+
+.dashboard-sidebar .sidebar-theme + .logout-button {
+  margin-top: 0;
+}

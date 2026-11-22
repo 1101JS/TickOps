@@ -2,9 +2,11 @@
 import RoleFramework from '../shared/RoleFramework.vue'
 
 const items = [
-  { label: 'Panel principal', target: 'panel' },
-  { label: 'Incidencias', target: 'incidencias' },
-  { label: 'Agentes', target: 'agents' }
+  { label: 'Panel principal', to: { name: 'AdminDashboard', hash: '#panel' } },
+  { label: 'Incidencias', to: { name: 'AdminDashboard', hash: '#incidents' } },
+  { label: 'Registrar incidencia', to: { name: 'AdminDashboard', hash: '#new-incident' } },
+  { label: 'Agentes', to: { name: 'AdminDashboard', hash: '#agents' } },
+  { label: 'Usuarios', to: { name: 'AdminDashboard', hash: '#users' } }
 ]
 </script>
 

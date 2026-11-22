@@ -1,14 +1,14 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import AgentFramework from '../../agent/framework.vue'
-import IncidentDetail from '../components/IncidentDetail.vue'
 import '../styles/RoleViews.css'
 import { getSession } from '../../../services/AuthService.js'
 import { formatDate, getIncidents, replaceIncident, slug, updateIncident } from '../../../services/IncidentService.js'
 
+const router = useRouter()
 const user = getSession()
 const incidents = ref([])
-const selectedId = ref(null)
 const notice = ref('')
 const error = ref('')
 const tab = ref('cola')
@@ -50,9 +50,8 @@ async function take(incident) {
   }
 }
 
-function onChanged(incident, id) {
-  replaceIncident(incidents.value, incident, id)
-  if (!incident) notice.value = `La incidencia #${id} fue transferida a otro departamento.`
+function openIncident(id) {
+  router.push({ name: 'IncidentDetail', params: { id } })
 }
 
 onMounted(load)
@@ -92,12 +91,10 @@ onMounted(load)
           <span v-if="incident.sla.resolucionVencida" class="pill late">SLA vencido</span>
           <span class="pill" :class="slug(incident.estado)">{{ incident.estado }}</span>
           <button v-if="!incident.agenteId && incident.acciones.gestionar" class="primary" type="button" @click="take(incident)">Tomar</button>
-          <button class="secondary" type="button" @click="selectedId = incident.id">Ver</button>
+          <button class="secondary" type="button" @click="openIncident(incident.id)">Ver</button>
         </article>
         <p v-if="!visible.length" class="empty">No hay incidencias en esta bandeja.</p>
       </div>
     </section>
-
-    <IncidentDetail v-if="selectedId" :incident-id="selectedId" :user="user" @close="selectedId = null" @changed="onChanged" />
   </AgentFramework>
 </template>

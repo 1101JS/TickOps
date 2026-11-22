@@ -2,8 +2,8 @@
 import RoleFramework from '../shared/RoleFramework.vue'
 
 const items = [
-  { label: 'Nueva incidencia', target: 'new-incident' },
-  { label: 'Mis solicitudes', target: 'my-incidents' }
+  { label: 'Nueva incidencia', to: { name: 'ApplicantDashboard', params: { vista: 'nueva' } } },
+  { label: 'Mis solicitudes', to: { name: 'ApplicantDashboard' } }
 ]
 </script>
 

@@ -2,11 +2,11 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import '../styles/AdminDashboard.css'
-import IncidentDetail from '../components/IncidentDetail.vue'
+import ThemeSwitcher from '../../../components/ThemeSwitcher.vue'
 import { getSession, logout } from '../../../services/AuthService.js'
 import {
   categoriesByDepartment, createIncident, createUser, formatDate, getAgents, getCatalogs, getIncidents, getUsers,
-  initials, replaceIncident, slug, updateUser
+  initials, slug, updateUser
 } from '../../../services/IncidentService.js'
 
 const ROLES = [
@@ -24,7 +24,6 @@ const users = ref([])
 const activeSection = ref('panel')
 const notice = ref('')
 const error = ref('')
-const selectedId = ref(null)
 
 const search = ref('')
 const statusFilter = ref('abiertas')
@@ -83,9 +82,8 @@ async function submitIncident() {
   } catch (err) { fail(err) }
 }
 
-function onChanged(incident, id) {
-  replaceIncident(incidents.value, incident, id)
-  refreshAgents()
+function openIncident(id) {
+  router.push({ name: 'IncidentDetail', params: { id } })
 }
 
 async function submitUser() {
@@ -142,6 +140,7 @@ onMounted(loadData)
         <button class="nav-item" :class="{ active: activeSection === 'agents' }" @click="goTo('agents')">♙ Agentes</button>
         <button class="nav-item" :class="{ active: activeSection === 'users' }" @click="goTo('users')">⚙ Usuarios</button>
       </nav>
+      <div class="sidebar-theme"><ThemeSwitcher /></div>
       <button class="logout-button" @click="handleLogout">Cerrar sesión</button>
     </aside>
 
@@ -179,7 +178,7 @@ onMounted(loadData)
               <td><span class="priority" :class="slug(incident.prioridad)">{{ incident.prioridad }}</span></td>
               <td><span class="status-pill" :class="slug(incident.estado)">{{ incident.estado }}</span><small v-if="incident.sla.resolucionVencida" class="late-text">SLA vencido</small></td>
               <td>{{ incident.agente || 'Sin asignar' }}</td>
-              <td class="table-actions"><button class="text-button" @click="selectedId = incident.id">Ver / gestionar</button></td>
+              <td class="table-actions"><button class="text-button" @click="openIncident(incident.id)">Ver / gestionar</button></td>
             </tr>
             <tr v-if="!filteredIncidents.length"><td colspan="6" class="empty-state">{{ incidents.length ? 'No hay incidencias con esos filtros.' : 'Todavía no hay incidencias registradas.' }}</td></tr>
           </tbody>
@@ -240,8 +239,6 @@ onMounted(loadData)
         </table></div>
       </section>
     </section>
-
-    <IncidentDetail v-if="selectedId" :incident-id="selectedId" :user="user" @close="selectedId = null" @changed="onChanged" />
 
     <div v-if="editingUser" class="details-backdrop" @click.self="editingUser = null">
       <section class="details-panel" role="dialog" aria-modal="true" aria-label="Editar usuario">
