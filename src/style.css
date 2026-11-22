@@ -293,7 +293,7 @@ code {
     right: 0;
     border-right-color: var(--border);
   }
-
+}
 
 /* =====================================
    TICKOPS - GLOBAL DESIGN SYSTEM
@@ -376,6 +376,4 @@ input,
 select,
 textarea {
   font-family: inherit;
-}
-
 }

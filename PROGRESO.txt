@@ -1,21 +1,40 @@
 TICKOPS - ESTADO DEL PROYECTO
-Última sesión: 21-nov-2026
+Última sesión: 22-nov-2026
 ==============================
 
 LO QUE YA ESTÁ HECHO
 --------------------
 1. Base de datos real: el respaldo sistema_incidencias.bak (Descargas) está restaurado en el
    PostgreSQL 19 local, base "sistema_incidencias". Trae solo catálogos (roles, 4 departamentos,
-   7 categorías, 5 estados, 4 prioridades con SLA). 0 usuarios y 0 incidencias.
+   7 categorías, 5 estados, 4 prioridades con SLA). Al 22-nov ya tiene usuarios e incidencias reales.
 2. Backend reescrito sobre PostgreSQL (server/app.js, db.js, node.js). Ya no usa SQLite ni datos demo.
    - Login por correo, sesión en cookie firmada (SESSION_SECRET en .env).
    - Permisos por rol: admin todo, agente su departamento, solicitante lo suyo.
    - Incidencias, comentarios (públicos/internos/resolución), historial, transferencias, usuarios.
    - Respeta los triggers de la base (Regla 5: comentario de resolución; Regla 9: Cerrado = solo lectura).
 3. Frontend adaptado: login con correo, paneles de Administrador, Agente y Solicitante,
-   ficha de incidencia compartida (src/modules/incidents/components/IncidentDetail.vue).
+   ficha de incidencia compartida (src/modules/incidents/components/IncidentDetail.vue),
+   que se muestra en su propia ruta /incidencia/:id (views/IncidentPage.vue).
 4. Pruebas (en una copia temporal de la base, ya borrada): 56 pruebas de API y 23 en navegador, todas OK.
 5. .env (NO se sube a git): datos PG*, SESSION_SECRET, ALLOW_REGISTRATION=false.
+6. Feedback del 22-nov (commit add9151, ya en línea):
+   - La ficha de incidencia dejó de ser modal: ahora es la página /incidencia/:id con enlace "Volver".
+   - Tema consistente: los portales de Agente y Solicitante usan variables de color con modo oscuro
+     (styles/RoleViews.css); interruptor de tema en la barra lateral de los tres roles.
+   - "Confirmar: Iniciar atención" parecía no hacer nada: el servidor pedía asignar agente y el error
+     quedaba fuera de vista. Ahora el admin elige agente en el mismo formulario y los avisos/errores
+     salen junto a la acción.
+   - Solicitante: "Mis solicitudes" (/mis-incidencias) y "Nueva incidencia" (/mis-incidencias/nueva)
+     son vistas distintas; el menú lateral usa rutas reales y resalta la opción activa.
+   - Corregido: campos que se salían de la tarjeta y el formulario que se reiniciaba al cargar datos.
+   - Probado en una copia temporal de la base (ya borrada): 17 comprobaciones en navegador, todas OK.
+   - src/style.css: al bloque ".ticks" le faltaba su "}" y todo el sistema de diseño TickOps (variables,
+     tema oscuro, fondo del body, box-sizing global) quedaba anidado dentro y no se aplicaba. Corregido;
+     capturas antes/después de landing, login, panel admin y ficha (claro y oscuro): sin cambios visibles
+     salvo el borde del interruptor de tema.
+7. Rutas del frontend: /incidencias (admin), /agente, /mis-incidencias[/nueva], /incidencia/:id.
+8. Existe un usuario administrador para Claude (usuario #7) para revisiones manuales; la clave no se
+   guarda en este archivo.
 
 CÓMO ARRANCAR
 -------------
@@ -49,3 +68,6 @@ LO QUE FALTA
 - Administrar departamentos y categorías desde el panel (hoy solo se ven).
 - Landing: botón "Solicitar información" usa mailto:contacto@tickops.com (dominio incorrecto).
 - Los datos viejos de SQLite (carpeta data/) ya no se usan; se pueden borrar.
+- La landing y el login no tienen modo oscuro: se ven claros aunque el tema elegido sea oscuro.
+- El panel de Administrador usa su propio diseño (AdminDashboard.css); la ficha /incidencia/:id del
+  admin usa el diseño de los portales. Unificar si se quiere el mismo aspecto.
