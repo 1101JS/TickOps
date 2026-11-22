@@ -201,7 +201,7 @@ onMounted(() => {
           <div class="benefit-icon icon-report">⌂</div>
           <h3>Administrador</h3>
           <p>
-            Supervisa la operación, administra usuarios y técnicos, distribuye
+            Supervisa la operación, administra usuarios y agentes, distribuye
             incidencias y mantiene el control general del servicio.
           </p>
           <span class="card-link">Control y administración</span>
@@ -210,10 +210,10 @@ onMounted(() => {
         <article class="benefit-card">
           <span class="card-number">02</span>
           <div class="benefit-icon icon-track">◎</div>
-          <h3>Técnico</h3>
+          <h3>Agente</h3>
           <p>
-            Atiende y gestiona tickets, actualiza su progreso y también puede
-            crear reportes dirigidos al equipo administrador.
+            Atiende la cola de su departamento, documenta el avance y puede
+            transferir incidencias al área que corresponda.
           </p>
           <span class="card-link">Atención y seguimiento</span>
         </article>
@@ -247,7 +247,7 @@ onMounted(() => {
           <div class="benefit-icon icon-report">＋</div>
           <h3>Registra</h3>
           <p>
-            El usuario o un técnico crea un ticket con los detalles necesarios
+            El solicitante o un agente crea un ticket con los detalles necesarios
             para identificar el problema.
           </p>
           <span class="card-link">La solicitud queda registrada</span>

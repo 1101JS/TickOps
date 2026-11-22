@@ -1,76 +1,117 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import ApplicantFramework from '../../applicant/framework.vue'
+import IncidentDetail from '../components/IncidentDetail.vue'
 import '../styles/RoleViews.css'
-import { createIncident, getIncidents } from '../../../services/IncidentService.js'
+import { getSession } from '../../../services/AuthService.js'
+import { categoriesByDepartment, createIncident, formatDate, getCatalogs, getIncidents, replaceIncident, slug } from '../../../services/IncidentService.js'
 
+const user = getSession()
 const incidents = ref([])
-const form = ref({ title: '', category: '', priority: 'Media', description: '' })
+const catalogs = ref({ categorias: [], prioridades: [] })
+const emptyForm = () => ({ titulo: '', descripcion: '', idCategoria: '', idPrioridad: catalogs.value.prioridades.find((p) => p.nombre === 'Media')?.id ?? '' })
+const form = ref(emptyForm())
 const notice = ref('')
+const error = ref('')
 const selectedId = ref(null)
 const sending = ref(false)
+const filter = ref('abiertas')
 
-// El servidor ya devuelve solo las incidencias del solicitante autenticado.
-const myIncidents = computed(() => incidents.value)
-const selectedIncident = computed(() => myIncidents.value.find((incident) => incident.id === selectedId.value))
+const groups = computed(() => categoriesByDepartment(catalogs.value.categorias))
+const selectedCategory = computed(() => catalogs.value.categorias.find((c) => c.id === Number(form.value.idCategoria)))
+const open = computed(() => incidents.value.filter((i) => !i.estadoFinal))
+const visible = computed(() => (filter.value === 'abiertas' ? open.value : incidents.value))
+const waitingForMe = computed(() => incidents.value.filter((i) => i.estado === 'Resuelto').length)
 
-async function loadIncidents() {
+async function load() {
   try {
-    incidents.value = await getIncidents()
-  } catch (error) {
-    notice.value = error.message
+    const [list, catalog] = await Promise.all([getIncidents(), getCatalogs()])
+    incidents.value = list
+    catalogs.value = catalog
+    if (!form.value.idPrioridad) form.value = emptyForm()
+  } catch (err) {
+    error.value = err.message
   }
 }
 
-async function submitIncident() {
+async function submit() {
   if (sending.value) return
   sending.value = true
+  error.value = ''
   try {
-    const incident = await createIncident(form.value)
+    const incident = await createIncident({ ...form.value, idCategoria: Number(form.value.idCategoria), idPrioridad: Number(form.value.idPrioridad) })
     incidents.value.unshift(incident)
-    form.value = { title: '', category: '', priority: 'Media', description: '' }
-    notice.value = incident.technicianName
-      ? `Tu incidencia #${incident.id} fue enviada y asignada automáticamente a ${incident.technicianName}.`
-      : `Tu incidencia #${incident.id} fue enviada. Pronto será asignada a un técnico.`
-    selectedId.value = incident.id
-  } catch (error) {
-    notice.value = error.message
+    form.value = emptyForm()
+    notice.value = `Tu incidencia #${incident.id} fue enviada a ${incident.departamento}. Te avisaremos aquí cuando la atiendan.`
+  } catch (err) {
+    error.value = err.message
   } finally {
     sending.value = false
   }
 }
 
-function technicianName(id) {
-  return incidents.value.find((incident) => incident.technicianId === id)?.technicianName || 'Pendiente de asignación'
+function onChanged(incident, id) {
+  replaceIncident(incidents.value, incident, id)
 }
 
-onMounted(loadIncidents)
+onMounted(load)
 </script>
 
 <template>
   <ApplicantFramework>
     <header class="role-header">
-      <div><p class="eyebrow">PORTAL DE SOPORTE</p><h1>¿Cómo podemos ayudarte?</h1><p>Registra una incidencia y consulta el avance de tus solicitudes.</p></div>
+      <div><p class="eyebrow">PORTAL DE SOPORTE</p><h1>Hola, {{ user?.nombre }}</h1><p>Registra una incidencia y consulta el avance de tus solicitudes.</p></div>
+      <div class="header-stat"><strong>{{ open.length }}</strong><span>abiertas</span></div>
     </header>
-    <p v-if="notice" class="notice" role="status">{{ notice }}</p>
+    <p v-if="error" class="notice error" role="alert">{{ error }}</p>
+    <p v-else-if="notice" class="notice" role="status">{{ notice }}</p>
+    <p v-if="waitingForMe" class="notice info">Tienes {{ waitingForMe }} incidencia(s) resuelta(s): ábrela para confirmar la solución o reabrirla.</p>
 
     <div class="applicant-layout">
       <section id="new-incident" class="role-card">
         <div class="section-title"><div><p class="eyebrow">NUEVO REPORTE</p><h2>Registrar incidencia</h2></div></div>
-        <form class="incident-form" @submit.prevent="submitIncident">
-          <label>Título<input v-model="form.title" placeholder="Ej. No puedo acceder al sistema" required /></label>
-          <div class="two-columns"><label>Categoría<select v-model="form.category" required><option value="">Selecciona una opción</option><option>Hardware</option><option>Software</option><option>Redes</option><option>Accesos</option><option>Otro</option></select></label><label>Prioridad<select v-model="form.priority"><option>Baja</option><option>Media</option><option>Alta</option></select></label></div>
-          <label>Descripción<textarea v-model="form.description" placeholder="Indica qué ocurre, dónde sucede y desde cuándo..." required /></label>
+        <form class="incident-form" @submit.prevent="submit">
+          <label>Título<input v-model="form.titulo" maxlength="150" placeholder="Ej. No puedo acceder al sistema" required /></label>
+          <div class="two-columns">
+            <label>Categoría
+              <select v-model="form.idCategoria" required>
+                <option value="">Selecciona una opción</option>
+                <optgroup v-for="g in groups" :key="g.departamento" :label="g.departamento">
+                  <option v-for="c in g.items" :key="c.id" :value="c.id">{{ c.nombre }}</option>
+                </optgroup>
+              </select>
+            </label>
+            <label>Prioridad
+              <select v-model="form.idPrioridad" required>
+                <option v-for="p in catalogs.prioridades" :key="p.id" :value="p.id">{{ p.nombre }}</option>
+              </select>
+            </label>
+          </div>
+          <p v-if="selectedCategory" class="hint">{{ selectedCategory.descripcion }} · la atenderá {{ selectedCategory.departamento }}.</p>
+          <label>Descripción<textarea v-model="form.descripcion" maxlength="5000" placeholder="Indica qué ocurre, dónde sucede y desde cuándo..." required /></label>
           <button class="primary" type="submit" :disabled="sending">{{ sending ? 'Enviando...' : 'Enviar incidencia' }}</button>
         </form>
       </section>
 
       <section id="my-incidents" class="role-card">
-        <div class="section-title"><div><p class="eyebrow">MIS SOLICITUDES</p><h2>Estado de incidencias</h2></div><span>{{ myIncidents.length }} registradas</span></div>
-        <div class="ticket-list compact-list"><article v-for="incident in myIncidents" :key="incident.id" class="ticket-row"><div class="ticket-main"><strong>#{{ incident.id }} · {{ incident.title }}</strong><small>{{ incident.category }} · Técnico: {{ technicianName(incident.technicianId) }}</small></div><span class="pill" :class="incident.status.toLowerCase().replace(' ', '-')">{{ incident.status }}</span><button class="secondary" type="button" @click="selectedId = incident.id">Ver detalle</button></article><p v-if="!myIncidents.length" class="empty">Aún no has enviado incidencias.</p></div>
+        <div class="section-title">
+          <div><p class="eyebrow">MIS SOLICITUDES</p><h2>Estado de incidencias</h2></div>
+          <select v-model="filter" class="filter" aria-label="Filtrar solicitudes"><option value="abiertas">Abiertas</option><option value="todas">Todas ({{ incidents.length }})</option></select>
+        </div>
+        <div class="ticket-list compact-list">
+          <article v-for="incident in visible" :key="incident.id" class="ticket-row">
+            <div class="ticket-main">
+              <strong>#{{ incident.id }} · {{ incident.titulo }}</strong>
+              <small>{{ incident.departamento }} · {{ incident.categoria }} · {{ formatDate(incident.fechaCreacion) }} · {{ incident.agente ? `Atiende: ${incident.agente}` : 'Pendiente de asignación' }}</small>
+            </div>
+            <span class="pill" :class="slug(incident.estado)">{{ incident.estado }}</span>
+            <button class="secondary" type="button" @click="selectedId = incident.id">Ver detalle</button>
+          </article>
+          <p v-if="!visible.length" class="empty">{{ incidents.length ? 'No tienes incidencias abiertas.' : 'Aún no has enviado incidencias.' }}</p>
+        </div>
       </section>
     </div>
 
-    <section v-if="selectedIncident" class="role-card detail-card"><div class="section-title"><div><p class="eyebrow">DETALLE DE SOLICITUD</p><h2>#{{ selectedIncident.id }} · {{ selectedIncident.title }}</h2></div><button class="text-action" type="button" @click="selectedId = null">Cerrar</button></div><p class="description">{{ selectedIncident.description }}</p><div class="detail-grid"><div><span>Estado</span><strong>{{ selectedIncident.status }}</strong></div><div><span>Técnico asignado</span><strong>{{ technicianName(selectedIncident.technicianId) }}</strong></div></div><div class="timeline"><article v-for="(update, index) in selectedIncident.updates || []" :key="`${update.date}-${index}`"><span>{{ update.date }}</span><p>{{ update.text }}</p></article></div></section>
+    <IncidentDetail v-if="selectedId" :incident-id="selectedId" :user="user" @close="selectedId = null" @changed="onChanged" />
   </ApplicantFramework>
 </template>

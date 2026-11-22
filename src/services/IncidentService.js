@@ -1,51 +1,100 @@
 import { api } from './api.js'
 
+// ---------- Formato ----------
+
 const dateFormat = new Intl.DateTimeFormat('es-HN', { dateStyle: 'medium' })
 const dateTimeFormat = new Intl.DateTimeFormat('es-HN', { dateStyle: 'medium', timeStyle: 'short' })
 
-function format(formatter, iso) {
+export function formatDate(iso) {
+  if (!iso) return '—'
   const date = new Date(iso)
-  return Number.isNaN(date.getTime()) ? iso : formatter.format(date)
+  return Number.isNaN(date.getTime()) ? String(iso) : dateFormat.format(date)
 }
 
-// Adapta la respuesta de la API al formato que ya usan las vistas (fechas legibles).
-function normalize(ticket) {
-  return {
-    ...ticket,
-    createdAtIso: ticket.createdAt,
-    createdAt: format(dateFormat, ticket.createdAt),
-    updates: (ticket.updates || []).map((update) => ({ ...update, date: format(dateTimeFormat, update.date) }))
-  }
+export function formatDateTime(iso) {
+  if (!iso) return '—'
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? String(iso) : dateTimeFormat.format(date)
 }
+
+// "En Proceso" -> "en-proceso", "Crítica" -> "critica" (para las clases CSS de las etiquetas).
+export function slug(value) {
+  return String(value || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim().replace(/\s+/g, '-')
+}
+
+export function initials(name) {
+  return String(name || '').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0].toUpperCase()).join('')
+}
+
+// ---------- Catálogos ----------
+
+let catalogs = null
+export function getCatalogs(force = false) {
+  if (!catalogs || force) catalogs = api('/catalogos').catch((error) => { catalogs = null; throw error })
+  return catalogs
+}
+
+// Categorías agrupadas por departamento, para <optgroup>.
+export function categoriesByDepartment(categorias) {
+  const groups = new Map()
+  for (const categoria of categorias) {
+    if (!groups.has(categoria.departamento)) groups.set(categoria.departamento, [])
+    groups.get(categoria.departamento).push(categoria)
+  }
+  return [...groups].map(([departamento, items]) => ({ departamento, items }))
+}
+
+// ---------- Incidencias ----------
 
 export async function getIncidents() {
-  const data = await api('/tickets')
-  return data.tickets.map(normalize)
+  return (await api('/incidencias')).incidencias
 }
 
-export async function createIncident({ title, category, priority, description, technicianId }) {
-  const data = await api('/tickets', { method: 'POST', body: { title, category, priority, description, technicianId } })
-  return normalize(data.ticket)
+export async function getIncident(id) {
+  return (await api(`/incidencias/${id}`)).incidencia
 }
 
+export async function createIncident({ titulo, descripcion, idCategoria, idPrioridad }) {
+  return (await api('/incidencias', { method: 'POST', body: { titulo, descripcion, idCategoria, idPrioridad } })).incidencia
+}
+
+// changes: { idPrioridad?, idCategoria?, idAgente?, estado?, comentario? }
 export async function updateIncident(id, changes) {
-  const data = await api(`/tickets/${id}`, { method: 'PATCH', body: changes })
-  return normalize(data.ticket)
+  return (await api(`/incidencias/${id}`, { method: 'PATCH', body: changes })).incidencia
 }
 
-export async function addIncidentUpdate(id, text) {
-  const data = await api(`/tickets/${id}/updates`, { method: 'POST', body: { text } })
-  return normalize(data.ticket)
+export async function addComment(id, { contenido, esInterno = false, esResolucion = false }) {
+  return (await api(`/incidencias/${id}/comentarios`, { method: 'POST', body: { contenido, esInterno, esResolucion } })).incidencia
 }
 
-export async function getTechnicians() {
-  const data = await api('/technicians')
-  return data.technicians
+// Devuelve la incidencia actualizada, o null si el usuario ya no puede verla (pasó a otro departamento).
+export async function transferIncident(id, { idCategoria, motivo }) {
+  return (await api(`/incidencias/${id}/transferencias`, { method: 'POST', body: { idCategoria, motivo } })).incidencia
 }
 
-// Reemplaza una incidencia dentro de una lista reactiva por su versión actualizada del servidor.
-export function replaceIncident(list, ticket) {
-  const index = list.findIndex((item) => item.id === ticket.id)
-  if (index === -1) list.unshift(ticket)
-  else list[index] = ticket
+// Reemplaza (o agrega) una incidencia dentro de una lista reactiva. Si "incident" es null, la quita.
+export function replaceIncident(list, incident, id = incident?.id) {
+  const index = list.findIndex((item) => item.id === id)
+  if (!incident) {
+    if (index !== -1) list.splice(index, 1)
+  } else if (index === -1) list.unshift(incident)
+  else list[index] = incident
+}
+
+// ---------- Agentes y usuarios ----------
+
+export async function getAgents(departamentoId) {
+  return (await api(`/agentes${departamentoId ? `?departamento=${departamentoId}` : ''}`)).agentes
+}
+
+export async function getUsers() {
+  return (await api('/usuarios')).usuarios
+}
+
+export async function createUser(user) {
+  return (await api('/usuarios', { method: 'POST', body: user })).usuario
+}
+
+export async function updateUser(id, changes) {
+  return (await api(`/usuarios/${id}`, { method: 'PATCH', body: changes })).usuario
 }

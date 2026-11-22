@@ -1,32 +1,39 @@
-// Punto de entrada en Cloudflare Workers (modo en línea / demostración en tickops.bid).
-// Las rutas /api/* llegan aquí (run_worker_first en wrangler.jsonc); el resto lo sirve Static Assets desde dist/.
-import { handleApi, readConfig } from './app.js'
+// Punto de entrada en Cloudflare Workers (tickops.bid).
+// - El frontend (dist/) lo sirve Cloudflare directamente.
+// - Las rutas /api/* se reenvían por un túnel de Cloudflare al servidor Node que corre en la PC (API_ORIGIN).
+//   La base de datos PostgreSQL nunca se expone: solo la API de la PC habla con ella.
+const OFFLINE_MESSAGE = 'El servidor de TickOps está apagado en este momento. Intenta más tarde.'
 
-function d1Adapter(d1) {
-  return {
-    key: d1,
-    async all(sql, ...params) {
-      return (await d1.prepare(sql).bind(...params).all()).results
-    },
-    first(sql, ...params) {
-      return d1.prepare(sql).bind(...params).first()
-    },
-    async run(sql, ...params) {
-      const result = await d1.prepare(sql).bind(...params).run()
-      return { lastId: result.meta.last_row_id, changes: result.meta.changes }
-    }
-  }
+function offline(status = 503) {
+  return new Response(JSON.stringify({ error: OFFLINE_MESSAGE }), {
+    status,
+    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }
+  })
 }
-
-let cached = null
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url)
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request)
-    if (!cached || cached.binding !== env.DB) {
-      cached = { binding: env.DB, db: d1Adapter(env.DB), config: readConfig(env) }
+    if (!env.API_ORIGIN) return offline()
+
+    const target = new URL(url.pathname + url.search, env.API_ORIGIN)
+    const hasBody = !['GET', 'HEAD'].includes(request.method)
+    let response
+    try {
+      response = await fetch(target, {
+        method: request.method,
+        headers: request.headers,
+        body: hasBody ? request.body : undefined,
+        redirect: 'manual'
+      })
+    } catch {
+      return offline()
     }
-    return handleApi(request, cached)
+
+    // Si la PC o el túnel no responden, Cloudflare devuelve una página HTML de error (502/530/1033...).
+    const isJson = (response.headers.get('content-type') || '').includes('application/json')
+    if (response.status >= 500 && !isJson) return offline()
+    return new Response(response.body, response)
   }
 }

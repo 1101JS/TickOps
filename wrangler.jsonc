@@ -14,16 +14,9 @@
     "run_worker_first": ["/api/*"]
   },
 
-  // Base de datos. Sin "database_id", wrangler la crea automáticamente en el primer deploy.
-  // Si prefieres crearla a mano: npx wrangler d1 create tickops  y pega aquí el database_id.
-  "d1_databases": [
-    { "binding": "DB", "database_name": "tickops" }
-  ],
-
-  // Modo demostración en línea: siembra cuentas demo y usa un costo de hash apto para el plan gratuito.
+  // La API corre en la PC (Node + PostgreSQL) y se publica con un túnel de Cloudflare.
+  // El túnel solo deja pasar rutas /api/ (ver iniciar-tickops.bat y ~/.cloudflared/config.yml).
   "vars": {
-    "SEED_DEMO": "true",
-    "ALLOW_REGISTRATION": "true",
-    "PBKDF2_ITERATIONS": "20000"
+    "API_ORIGIN": "https://origen.tickops.bid"
   }
 }

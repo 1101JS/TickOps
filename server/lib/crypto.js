@@ -34,6 +34,44 @@ export async function verifyPassword(password, stored) {
   return diff === 0
 }
 
+// ---------- Tokens de sesión firmados (HMAC-SHA256) ----------
+// Formato: <payload JSON en base64url>.<firma base64url>. No requiere tabla de sesiones en la base.
+
+function toBase64Url(bytes) {
+  return toBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+function fromBase64Url(text) {
+  const normal = text.replace(/-/g, '+').replace(/_/g, '/')
+  return fromBase64(normal + '='.repeat((4 - (normal.length % 4)) % 4))
+}
+
+const hmacKeys = new Map()
+function hmacKey(secret) {
+  if (!hmacKeys.has(secret)) {
+    hmacKeys.set(secret, crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']))
+  }
+  return hmacKeys.get(secret)
+}
+
+export async function signToken(payload, secret) {
+  const body = toBase64Url(encoder.encode(JSON.stringify(payload)))
+  const signature = await crypto.subtle.sign('HMAC', await hmacKey(secret), encoder.encode(body))
+  return `${body}.${toBase64Url(signature)}`
+}
+
+// Devuelve el payload si la firma es válida; si no, null. (crypto.subtle.verify compara en tiempo constante.)
+export async function verifyToken(token, secret) {
+  const [body, signature, extra] = String(token || '').split('.')
+  if (!body || !signature || extra !== undefined) return null
+  try {
+    const valid = await crypto.subtle.verify('HMAC', await hmacKey(secret), fromBase64Url(signature), encoder.encode(body))
+    return valid ? JSON.parse(new TextDecoder().decode(fromBase64Url(body))) : null
+  } catch {
+    return null
+  }
+}
+
 export function randomToken() {
   return toBase64(crypto.getRandomValues(new Uint8Array(32))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }

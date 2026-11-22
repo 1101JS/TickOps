@@ -1,6 +1,6 @@
 import { api } from './api.js'
 
-// La sesión real vive en una cookie HttpOnly; aquí solo se guarda en memoria el usuario actual.
+// La sesión real vive en una cookie HttpOnly firmada por el servidor; aquí solo se guarda en memoria el usuario actual.
 let currentUser = null
 let loaded = null
 
@@ -13,15 +13,19 @@ export function loadSession(force = false) {
   return loaded
 }
 
-export async function login(username, password) {
-  const data = await api('/auth/login', { method: 'POST', body: { username, password } })
+export async function login(correo, password) {
+  const data = await api('/auth/login', { method: 'POST', body: { correo, password } })
   currentUser = data.user
   loaded = Promise.resolve(currentUser)
   return currentUser
 }
 
-export async function register({ name, username, email, password }) {
-  const data = await api('/auth/register', { method: 'POST', body: { name, username, email, password } })
+export async function getAuthConfig() {
+  return api('/auth/config')
+}
+
+export async function register({ nombre, correo, password }) {
+  const data = await api('/auth/register', { method: 'POST', body: { nombre, correo, password } })
   return data.user
 }
 
@@ -34,7 +38,7 @@ export function getSession() {
 }
 
 export function routeForRole(role) {
-  return { admin: 'AdminDashboard', technician: 'TechnicianDashboard', applicant: 'ApplicantDashboard' }[role] || 'Login'
+  return { admin: 'AdminDashboard', agent: 'AgentDashboard', applicant: 'ApplicantDashboard' }[role] || 'Login'
 }
 
 export async function logout() {

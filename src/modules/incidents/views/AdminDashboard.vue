@@ -2,69 +2,127 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import '../styles/AdminDashboard.css'
-import { logout } from '../../../services/AuthService.js'
-import { createIncident, getIncidents, getTechnicians, replaceIncident, updateIncident } from '../../../services/IncidentService.js'
+import IncidentDetail from '../components/IncidentDetail.vue'
+import { getSession, logout } from '../../../services/AuthService.js'
+import {
+  categoriesByDepartment, createIncident, createUser, formatDate, getAgents, getCatalogs, getIncidents, getUsers,
+  initials, replaceIncident, slug, updateUser
+} from '../../../services/IncidentService.js'
+
+const ROLES = [
+  { key: 'admin', label: 'Administrador' },
+  { key: 'agent', label: 'Agente' },
+  { key: 'applicant', label: 'Solicitante' }
+]
 
 const router = useRouter()
-const technicians = ref([])
+const user = getSession()
+const catalogs = ref({ departamentos: [], categorias: [], prioridades: [], estados: [] })
 const incidents = ref([])
-const newIncident = ref({ title: '', category: '', priority: 'Media', description: '', technicianId: null })
-const selectedIncident = ref(null)
-const editingIncident = ref(null)
+const agents = ref([])
+const users = ref([])
 const activeSection = ref('panel')
 const notice = ref('')
-const search = ref('')
-const statusFilter = ref('Todos')
+const error = ref('')
+const selectedId = ref(null)
 
-function initials(name) { return name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0].toUpperCase()).join('') }
-function technicianName(id) { return technicians.value.find(t => t.id === id)?.name || 'Sin asignar' }
-function syncWorkload() { technicians.value.forEach(t => { t.workload = incidents.value.filter(i => i.technicianId === t.id && i.status !== 'Resuelta').length }) }
-function showError(error) { notice.value = error.message || 'Ocurrió un error inesperado.' }
+const search = ref('')
+const statusFilter = ref('abiertas')
+const departmentFilter = ref('')
+
+const emptyIncident = () => ({ titulo: '', descripcion: '', idCategoria: '', idPrioridad: catalogs.value.prioridades.find((p) => p.nombre === 'Media')?.id ?? '' })
+const newIncident = ref(emptyIncident())
+const emptyUser = () => ({ nombre: '', correo: '', password: '', role: 'applicant', idDepartamento: '' })
+const newUser = ref(emptyUser())
+const editingUser = ref(null)
+
+const categoryGroups = computed(() => categoriesByDepartment(catalogs.value.categorias))
+const open = computed(() => incidents.value.filter((i) => !i.estadoFinal && i.estado !== 'Resuelto'))
+const unassigned = computed(() => open.value.filter((i) => !i.agenteId))
+const late = computed(() => incidents.value.filter((i) => i.sla.resolucionVencida))
+const filteredIncidents = computed(() => {
+  const term = search.value.trim().toLowerCase()
+  return incidents.value.filter((i) => {
+    if (statusFilter.value === 'abiertas' && (i.estadoFinal || i.estado === 'Resuelto')) return false
+    if (statusFilter.value === 'vencidas' && !i.sla.resolucionVencida) return false
+    if (!['abiertas', 'vencidas', 'todas'].includes(statusFilter.value) && i.estado !== statusFilter.value) return false
+    if (departmentFilter.value && i.departamentoId !== Number(departmentFilter.value)) return false
+    return !term || [i.id, i.titulo, i.categoria, i.solicitante, i.agente].join(' ').toLowerCase().includes(term)
+  })
+})
+const agentsByDepartment = computed(() =>
+  catalogs.value.departamentos.map((d) => ({ ...d, agents: agents.value.filter((a) => a.departamentoId === d.id) }))
+)
+
+function show(message) { error.value = ''; notice.value = message }
+function fail(err) { notice.value = ''; error.value = err.message || 'Ocurrió un error inesperado.' }
 
 async function loadData() {
   try {
-    const [techList, ticketList] = await Promise.all([getTechnicians(), getIncidents()])
-    technicians.value = techList.map(t => ({ ...t, initials: initials(t.name) }))
-    incidents.value = ticketList
-    syncWorkload()
-  } catch (error) { showError(error) }
+    const [catalog, incidentList, agentList, userList] = await Promise.all([getCatalogs(), getIncidents(), getAgents(), getUsers()])
+    catalogs.value = catalog
+    incidents.value = incidentList
+    agents.value = agentList
+    users.value = userList
+    if (!newIncident.value.idPrioridad) newIncident.value = emptyIncident()
+  } catch (err) { fail(err) }
 }
 
-const filteredIncidents = computed(() => { const term = search.value.trim().toLowerCase(); return incidents.value.filter(i => (statusFilter.value === 'Todos' || i.status === statusFilter.value) && (!term || [i.id, i.title, i.category, technicianName(i.technicianId)].join(' ').toLowerCase().includes(term))) })
-const openIncidents = computed(() => incidents.value.filter(i => i.status !== 'Resuelta').length)
-const unassignedIncidents = computed(() => incidents.value.filter(i => !i.technicianId && i.status !== 'Resuelta').length)
+async function refreshAgents() {
+  agents.value = await getAgents().catch(() => agents.value)
+}
 
 async function submitIncident() {
   try {
-    const { technicianId, ...fields } = newIncident.value
-    const incident = await createIncident({ ...fields, technicianId: technicianId ? Number(technicianId) : null })
+    const { idCategoria, idPrioridad, ...fields } = newIncident.value
+    const incident = await createIncident({ ...fields, idCategoria: Number(idCategoria), idPrioridad: Number(idPrioridad) })
     incidents.value.unshift(incident)
-    syncWorkload(); newIncident.value = { title: '', category: '', priority: 'Media', description: '', technicianId: null }
-    notice.value = `Incidencia #${incident.id} registrada y asignada a ${incident.technicianName || 'nadie (sin técnicos activos)'}.`; goTo('incidents')
-  } catch (error) { showError(error) }
+    newIncident.value = emptyIncident()
+    show(`Incidencia #${incident.id} registrada en la cola de ${incident.departamento}.`)
+    goTo('incidents')
+  } catch (err) { fail(err) }
 }
 
-async function assignTechnician(incident, technicianId) {
-  const id = technicianId && technicianId !== 'null' ? Number(technicianId) : null
-  try {
-    replaceIncident(incidents.value, await updateIncident(incident.id, { technicianId: id }))
-    syncWorkload()
-    notice.value = id ? `${technicianName(id)} fue asignado a la incidencia #${incident.id}.` : `Se removió el técnico de la incidencia #${incident.id}.`
-  } catch (error) { showError(error); await loadData() }
+function onChanged(incident, id) {
+  replaceIncident(incidents.value, incident, id)
+  refreshAgents()
 }
 
-function openEditor(incident) { editingIncident.value = { ...incident } }
-
-async function saveIncident() {
-  const draft = editingIncident.value
+async function submitUser() {
   try {
-    const updated = await updateIncident(draft.id, {
-      title: draft.title, category: draft.category, priority: draft.priority, status: draft.status, description: draft.description,
-      technicianId: draft.technicianId ? Number(draft.technicianId) : null
-    })
-    replaceIncident(incidents.value, updated)
-    selectedIncident.value = { ...updated }; syncWorkload(); notice.value = `Incidencia #${draft.id} actualizada.`; editingIncident.value = null
-  } catch (error) { showError(error) }
+    const { idDepartamento, ...fields } = newUser.value
+    const created = await createUser({ ...fields, idDepartamento: idDepartamento ? Number(idDepartamento) : null })
+    users.value.push(created)
+    newUser.value = emptyUser()
+    show(`Usuario ${created.correo} creado como ${created.rol}.`)
+    await refreshAgents()
+  } catch (err) { fail(err) }
+}
+
+function openUserEditor(target) {
+  editingUser.value = { id: target.id, nombre: target.nombre, correo: target.correo, role: target.role, idDepartamento: target.departamentoId ?? '', password: '' }
+}
+
+async function saveUser() {
+  const draft = editingUser.value
+  try {
+    const changes = { nombre: draft.nombre, correo: draft.correo, role: draft.role, idDepartamento: draft.idDepartamento ? Number(draft.idDepartamento) : null }
+    if (draft.password) changes.password = draft.password
+    const updated = await updateUser(draft.id, changes)
+    users.value = users.value.map((u) => (u.id === updated.id ? updated : u))
+    editingUser.value = null
+    show(`Usuario ${updated.correo} actualizado.`)
+    await refreshAgents()
+  } catch (err) { fail(err) }
+}
+
+async function toggleActive(target) {
+  try {
+    const updated = await updateUser(target.id, { activo: !target.activo })
+    users.value = users.value.map((u) => (u.id === updated.id ? updated : u))
+    show(`${updated.nombre} ${updated.activo ? 'reactivado' : 'desactivado'}.`)
+    await refreshAgents()
+  } catch (err) { fail(err) }
 }
 
 function goTo(section) { activeSection.value = section; document.getElementById(section)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
@@ -79,43 +137,126 @@ onMounted(loadData)
       <div class="sidebar-brand"><span class="brand-mark">E</span><div><h2>ETicket</h2><span>Administración · UTH</span></div></div>
       <nav class="sidebar-nav" aria-label="Navegación de administración">
         <button class="nav-item" :class="{ active: activeSection === 'panel' }" @click="goTo('panel')">⌂ Panel principal</button>
+        <button class="nav-item" :class="{ active: activeSection === 'incidents' }" @click="goTo('incidents')">▤ Incidencias</button>
         <button class="nav-item" :class="{ active: activeSection === 'new-incident' }" @click="goTo('new-incident')">＋ Registrar incidencia</button>
-        <button class="nav-item" :class="{ active: activeSection === 'incidents' }" @click="goTo('incidents')">▤ Administrar incidencias</button>
-        <button class="nav-item" :class="{ active: activeSection === 'technicians' }" @click="goTo('technicians')">♙ Técnicos</button>
+        <button class="nav-item" :class="{ active: activeSection === 'agents' }" @click="goTo('agents')">♙ Agentes</button>
+        <button class="nav-item" :class="{ active: activeSection === 'users' }" @click="goTo('users')">⚙ Usuarios</button>
       </nav>
       <button class="logout-button" @click="handleLogout">Cerrar sesión</button>
     </aside>
 
     <section class="dashboard-content">
-      <header id="panel" class="dashboard-header"><div><p class="eyebrow">CENTRO DE CONTROL</p><h1>Panel principal</h1><p>Registra, da seguimiento y asigna las incidencias de soporte.</p></div><button class="primary-button header-action" @click="goTo('new-incident')">+ Nueva incidencia</button></header>
-      <p v-if="notice" class="form-notice" role="status">{{ notice }}</p>
+      <header id="panel" class="dashboard-header">
+        <div><p class="eyebrow">CENTRO DE CONTROL</p><h1>Panel principal</h1><p>Hola, {{ user?.nombre }}. Supervisa las incidencias de todos los departamentos.</p></div>
+        <button class="primary-button header-action" @click="goTo('new-incident')">+ Nueva incidencia</button>
+      </header>
+      <p v-if="error" class="form-notice error" role="alert">{{ error }}</p>
+      <p v-else-if="notice" class="form-notice" role="status">{{ notice }}</p>
+
       <section class="stats-grid" aria-label="Resumen de incidencias">
-        <article class="stat-card"><span>Incidencias activas</span><strong>{{ openIncidents }}</strong><small>En espera o en proceso</small></article>
-        <article class="stat-card warning"><span>Sin asignar</span><strong>{{ unassignedIncidents }}</strong><small>Requieren un técnico</small></article>
-        <article class="stat-card success"><span>Resueltas</span><strong>{{ incidents.filter(i => i.status === 'Resuelta').length }}</strong><small>Histórico disponible</small></article>
-        <article class="stat-card"><span>Técnicos disponibles</span><strong>{{ technicians.filter(t => t.workload === 0).length }}</strong><small>Sin carga activa</small></article>
+        <article class="stat-card"><span>Incidencias abiertas</span><strong>{{ open.length }}</strong><small>Pendientes o en proceso</small></article>
+        <article class="stat-card warning"><span>Sin asignar</span><strong>{{ unassigned.length }}</strong><small>Esperando agente</small></article>
+        <article class="stat-card danger"><span>SLA vencido</span><strong>{{ late.length }}</strong><small>Fuera del tiempo de resolución</small></article>
+        <article class="stat-card success"><span>Agentes activos</span><strong>{{ agents.length }}</strong><small>{{ users.length }} usuarios en total</small></article>
       </section>
+
+      <section id="incidents" class="card incident-management section-anchor">
+        <div class="section-heading management-heading"><div><p class="eyebrow">SEGUIMIENTO</p><h2>Incidencias</h2></div><span>{{ filteredIncidents.length }} de {{ incidents.length }}</span></div>
+        <div class="toolbar">
+          <input v-model="search" type="search" placeholder="Buscar por número, título, solicitante o agente" aria-label="Buscar incidencias" />
+          <select v-model="departmentFilter" aria-label="Filtrar por departamento"><option value="">Todos los departamentos</option><option v-for="d in catalogs.departamentos" :key="d.id" :value="d.id">{{ d.nombre }}</option></select>
+          <select v-model="statusFilter" aria-label="Filtrar por estado">
+            <option value="abiertas">Abiertas</option><option value="vencidas">SLA vencido</option><option value="todas">Todas</option>
+            <option v-for="e in catalogs.estados" :key="e.id" :value="e.nombre">{{ e.nombre }}</option>
+          </select>
+        </div>
+        <div class="incident-table-wrap"><table class="incident-table">
+          <thead><tr><th>Incidencia</th><th>Departamento</th><th>Prioridad</th><th>Estado</th><th>Agente</th><th></th></tr></thead>
+          <tbody>
+            <tr v-for="incident in filteredIncidents" :key="incident.id">
+              <td><strong>#{{ incident.id }} · {{ incident.titulo }}</strong><small>{{ incident.solicitante }} · {{ formatDate(incident.fechaCreacion) }}</small></td>
+              <td><strong>{{ incident.departamento }}</strong><small>{{ incident.categoria }}</small></td>
+              <td><span class="priority" :class="slug(incident.prioridad)">{{ incident.prioridad }}</span></td>
+              <td><span class="status-pill" :class="slug(incident.estado)">{{ incident.estado }}</span><small v-if="incident.sla.resolucionVencida" class="late-text">SLA vencido</small></td>
+              <td>{{ incident.agente || 'Sin asignar' }}</td>
+              <td class="table-actions"><button class="text-button" @click="selectedId = incident.id">Ver / gestionar</button></td>
+            </tr>
+            <tr v-if="!filteredIncidents.length"><td colspan="6" class="empty-state">{{ incidents.length ? 'No hay incidencias con esos filtros.' : 'Todavía no hay incidencias registradas.' }}</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
       <section id="new-incident" class="card incident-form section-anchor">
-        <div class="section-heading"><div><p class="eyebrow">REGISTRO</p><h2>Registrar nueva incidencia</h2></div><span class="section-note">Los campos marcados son obligatorios.</span></div>
+        <div class="section-heading"><div><p class="eyebrow">REGISTRO</p><h2>Registrar nueva incidencia</h2></div><span class="section-note">Quedará a tu nombre como solicitante.</span></div>
         <form @submit.prevent="submitIncident"><div class="form-grid">
-          <label>Título<input v-model="newIncident.title" placeholder="Breve descripción del problema" required /></label>
-          <label>Categoría<select v-model="newIncident.category" required><option value="">Seleccione...</option><option>Hardware</option><option>Software</option><option>Redes</option><option>Accesos</option><option>Otro</option></select></label>
-          <label>Prioridad<select v-model="newIncident.priority"><option>Baja</option><option>Media</option><option>Alta</option></select></label>
-          <label>Técnico inicial <span class="optional">(opcional)</span><select v-model="newIncident.technicianId"><option :value="null">Sin asignar</option><option v-for="technician in technicians" :key="technician.id" :value="technician.id">{{ technician.name }} · {{ technician.specialty }}</option></select></label>
-          <label class="form-full">Descripción<textarea v-model="newIncident.description" placeholder="Describe el problema, ubicación y cualquier detalle relevante..." required /></label>
+          <label>Título<input v-model="newIncident.titulo" maxlength="150" placeholder="Breve descripción del problema" required /></label>
+          <label>Categoría<select v-model="newIncident.idCategoria" required><option value="">Seleccione...</option><optgroup v-for="g in categoryGroups" :key="g.departamento" :label="g.departamento"><option v-for="c in g.items" :key="c.id" :value="c.id">{{ c.nombre }}</option></optgroup></select></label>
+          <label>Prioridad<select v-model="newIncident.idPrioridad" required><option v-for="p in catalogs.prioridades" :key="p.id" :value="p.id">{{ p.nombre }} · resolver en {{ p.slaResolucionHoras }} h</option></select></label>
+          <label class="form-full">Descripción<textarea v-model="newIncident.descripcion" maxlength="5000" placeholder="Describe el problema, ubicación y cualquier detalle relevante..." required /></label>
         </div><button type="submit" class="primary-button">Registrar incidencia</button></form>
       </section>
-      <section id="incidents" class="card incident-management section-anchor">
-        <div class="section-heading management-heading"><div><p class="eyebrow">SEGUIMIENTO</p><h2>Administrar incidencias</h2></div><span>{{ filteredIncidents.length }} de {{ incidents.length }} incidencias</span></div>
-        <div class="toolbar"><input v-model="search" type="search" placeholder="Buscar por código, título o técnico" aria-label="Buscar incidencias" /><select v-model="statusFilter" aria-label="Filtrar por estado"><option>Todos</option><option>Pendiente</option><option>En proceso</option><option>Resuelta</option></select></div>
-        <div class="incident-table-wrap"><table class="incident-table"><thead><tr><th>Incidencia</th><th>Prioridad</th><th>Estado</th><th>Técnico asignado</th><th>Acciones</th></tr></thead><tbody>
-          <tr v-for="incident in filteredIncidents" :key="incident.id"><td><strong>#{{ incident.id }} · {{ incident.title }}</strong><small>{{ incident.category }} · {{ incident.createdAt }}</small></td><td><span class="priority" :class="incident.priority.toLowerCase()">{{ incident.priority }}</span></td><td><span class="status-pill" :class="incident.status.toLowerCase().replace(' ', '-')">{{ incident.status }}</span></td><td><select class="assignment-select" :value="incident.technicianId" @change="assignTechnician(incident, $event.target.value)"><option :value="null">Sin asignar</option><option v-for="technician in technicians" :key="technician.id" :value="technician.id">{{ technician.name }}</option></select></td><td class="table-actions"><button class="text-button" @click="selectedIncident = { ...incident }">Ver</button><button class="text-button" @click="openEditor(incident)">Editar</button></td></tr>
-          <tr v-if="!filteredIncidents.length"><td colspan="5" class="empty-state">No se encontraron incidencias con esos criterios.</td></tr>
-        </tbody></table></div>
+
+      <section id="agents" class="card technicians-section section-anchor">
+        <div class="section-heading"><div><p class="eyebrow">EQUIPO DE SOPORTE</p><h2>Agentes por departamento</h2></div><span class="section-note">La carga cuenta incidencias pendientes o en proceso.</span></div>
+        <div v-for="d in agentsByDepartment" :key="d.id" class="department-block">
+          <h3>{{ d.nombre }} <small>{{ d.agents.length }} agente(s)</small></h3>
+          <div class="technician-grid">
+            <article v-for="agent in d.agents" :key="agent.id" class="technician-card">
+              <div class="technician-avatar">{{ initials(agent.nombre) }}</div>
+              <div class="technician-info"><h3>{{ agent.nombre }}</h3><small>{{ agent.correo }}</small></div>
+              <span class="workload" :class="{ available: agent.carga === 0 }">{{ agent.carga === 0 ? 'Disponible' : `${agent.carga} abierta${agent.carga > 1 ? 's' : ''}` }}</span>
+            </article>
+          </div>
+          <p v-if="!d.agents.length" class="section-note">Sin agentes: sus incidencias no podrán atenderse. Crea uno en Usuarios.</p>
+        </div>
       </section>
-      <section id="technicians" class="card technicians-section section-anchor"><div class="section-heading"><div><p class="eyebrow">EQUIPO DE SOPORTE</p><h2>Técnicos</h2></div><span class="section-note">Asigna, cambia o remueve técnicos desde cada incidencia.</span></div><div class="technician-grid"><article v-for="technician in technicians" :key="technician.id" class="technician-card"><div class="technician-avatar">{{ technician.initials }}</div><div class="technician-info"><h3>{{ technician.name }}</h3><p>{{ technician.specialty }}</p><small>{{ technician.email }}</small></div><span class="workload" :class="{ available: technician.workload === 0 }">{{ technician.workload === 0 ? 'Disponible' : `${technician.workload} activa${technician.workload > 1 ? 's' : ''}` }}</span></article></div></section>
+
+      <section id="users" class="card section-anchor">
+        <div class="section-heading"><div><p class="eyebrow">ACCESOS</p><h2>Usuarios</h2></div><span class="section-note">{{ users.length }} cuenta(s)</span></div>
+        <form class="incident-form user-form" @submit.prevent="submitUser"><div class="form-grid">
+          <label>Nombre completo<input v-model="newUser.nombre" maxlength="100" required /></label>
+          <label>Correo<input v-model="newUser.correo" type="email" maxlength="120" autocomplete="off" required /></label>
+          <label>Contraseña inicial<input v-model="newUser.password" type="password" minlength="8" autocomplete="new-password" required /></label>
+          <label>Rol<select v-model="newUser.role"><option v-for="r in ROLES" :key="r.key" :value="r.key">{{ r.label }}</option></select></label>
+          <label>Departamento <span v-if="newUser.role !== 'agent'" class="optional">(opcional)</span>
+            <select v-model="newUser.idDepartamento" :required="newUser.role === 'agent'"><option value="">Ninguno</option><option v-for="d in catalogs.departamentos" :key="d.id" :value="d.id">{{ d.nombre }}</option></select>
+          </label>
+        </div><button type="submit" class="primary-button">Crear usuario</button></form>
+
+        <div class="incident-table-wrap"><table class="incident-table">
+          <thead><tr><th>Usuario</th><th>Rol</th><th>Departamento</th><th>Estado</th><th></th></tr></thead>
+          <tbody>
+            <tr v-for="u in users" :key="u.id" :class="{ inactive: !u.activo }">
+              <td><strong>{{ u.nombre }}</strong><small>{{ u.correo }}</small></td>
+              <td>{{ u.rol }}</td>
+              <td>{{ u.departamento || '—' }}</td>
+              <td><span class="status-pill" :class="u.activo ? 'resuelto' : 'cerrado'">{{ u.activo ? 'Activo' : 'Inactivo' }}</span></td>
+              <td class="table-actions">
+                <button class="text-button" @click="openUserEditor(u)">Editar</button>
+                <button v-if="u.id !== user?.id" class="text-button" @click="toggleActive(u)">{{ u.activo ? 'Desactivar' : 'Reactivar' }}</button>
+              </td>
+            </tr>
+          </tbody>
+        </table></div>
+      </section>
     </section>
-    <div v-if="selectedIncident" class="details-backdrop" @click.self="selectedIncident = null"><section class="details-panel" role="dialog" aria-modal="true"><header class="details-header"><div><span class="details-kicker">FICHA DE SEGUIMIENTO</span><h2>Incidencia #{{ selectedIncident.id }}</h2></div><button class="details-close" @click="selectedIncident = null">×</button></header><div class="details-summary"><div class="details-summary-icon">◈</div><div><h3>{{ selectedIncident.title }}</h3><p>Registrada el {{ selectedIncident.createdAt }}</p></div><span class="status-pill" :class="selectedIncident.status.toLowerCase().replace(' ', '-')">{{ selectedIncident.status }}</span></div><div class="details-grid"><article class="details-field"><span>Categoría</span><strong>{{ selectedIncident.category }}</strong></article><article class="details-field"><span>Prioridad</span><strong>{{ selectedIncident.priority }}</strong></article><article class="details-field"><span>Técnico asignado</span><strong>{{ technicianName(selectedIncident.technicianId) }}</strong></article><article class="details-field"><span>Estado actual</span><strong>{{ selectedIncident.status }}</strong></article></div><section class="details-description"><h3>Descripción del problema</h3><p>{{ selectedIncident.description }}</p></section><footer class="details-footer"><button class="details-done secondary-button" @click="openEditor(selectedIncident); selectedIncident = null">Editar incidencia</button><button class="details-done" @click="selectedIncident = null">Cerrar</button></footer></section></div>
-    <div v-if="editingIncident" class="details-backdrop" @click.self="editingIncident = null"><section class="details-panel" role="dialog" aria-modal="true"><header class="details-header"><div><span class="details-kicker">ACTUALIZACIÓN</span><h2>Editar incidencia #{{ editingIncident.id }}</h2></div><button class="details-close" @click="editingIncident = null">×</button></header><form class="edit-form" @submit.prevent="saveIncident"><label>Título<input v-model="editingIncident.title" required /></label><div class="form-grid compact"><label>Categoría<select v-model="editingIncident.category"><option>Hardware</option><option>Software</option><option>Redes</option><option>Accesos</option><option>Otro</option></select></label><label>Prioridad<select v-model="editingIncident.priority"><option>Baja</option><option>Media</option><option>Alta</option></select></label><label>Estado<select v-model="editingIncident.status"><option>Pendiente</option><option>En proceso</option><option>Resuelta</option></select></label><label>Técnico<select v-model="editingIncident.technicianId"><option :value="null">Sin asignar</option><option v-for="technician in technicians" :key="technician.id" :value="technician.id">{{ technician.name }}</option></select></label></div><label>Descripción<textarea v-model="editingIncident.description" required /></label><footer class="details-footer"><button type="button" class="details-done secondary-button" @click="editingIncident = null">Cancelar</button><button type="submit" class="details-done">Guardar cambios</button></footer></form></section></div>
+
+    <IncidentDetail v-if="selectedId" :incident-id="selectedId" :user="user" @close="selectedId = null" @changed="onChanged" />
+
+    <div v-if="editingUser" class="details-backdrop" @click.self="editingUser = null">
+      <section class="details-panel" role="dialog" aria-modal="true" aria-label="Editar usuario">
+        <header class="details-header"><div><span class="details-kicker">USUARIO</span><h2>Editar {{ editingUser.nombre }}</h2></div><button class="details-close" @click="editingUser = null">×</button></header>
+        <form class="edit-form" @submit.prevent="saveUser">
+          <div class="form-grid compact">
+            <label>Nombre<input v-model="editingUser.nombre" maxlength="100" required /></label>
+            <label>Correo<input v-model="editingUser.correo" type="email" maxlength="120" required /></label>
+            <label>Rol<select v-model="editingUser.role" :disabled="editingUser.id === user?.id"><option v-for="r in ROLES" :key="r.key" :value="r.key">{{ r.label }}</option></select></label>
+            <label>Departamento<select v-model="editingUser.idDepartamento" :required="editingUser.role === 'agent'"><option value="">Ninguno</option><option v-for="d in catalogs.departamentos" :key="d.id" :value="d.id">{{ d.nombre }}</option></select></label>
+          </div>
+          <label>Nueva contraseña <span class="optional">(déjala vacía para no cambiarla; cerrará sus sesiones abiertas)</span><input v-model="editingUser.password" type="password" minlength="8" autocomplete="new-password" /></label>
+          <footer class="details-footer"><button type="button" class="details-done secondary-button" @click="editingUser = null">Cancelar</button><button type="submit" class="details-done">Guardar cambios</button></footer>
+        </form>
+      </section>
+    </div>
   </main>
 </template>

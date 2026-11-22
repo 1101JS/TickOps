@@ -1,54 +1,51 @@
 TICKOPS - ESTADO DEL PROYECTO
-Última sesión: 19-nov-2026
+Última sesión: 21-nov-2026
 ==============================
 
 LO QUE YA ESTÁ HECHO
 --------------------
-1. Backend completo y portable (sin dependencias nuevas):
-   - server/app.js     API REST: login con cookie, tickets, seguimientos, técnicos y usuarios
-   - server/schema.js  tablas y cuentas demo, se crean solas al arrancar
-   - server/worker.js  modo en línea (Cloudflare Worker + base de datos D1)
-   - server/node.js    modo LAN (Node + archivo SQLite en data/tickops.db)
-   - wrangler.jsonc    configuración de Cloudflare (Worker "eticket")
-2. Frontend conectado a la API (src/services/). Ya no usa localStorage.
-3. Desplegado en https://tickops.bid con cada push a main (Workers Builds).
-   Probado en vivo: /api/health, login y lista de tickets.
-4. El remoto de git cambió a https://github.com/1101JS/TickOps.git (el repo se renombró).
-5. README.md explica los modos en línea, LAN y desarrollo.
+1. Base de datos real: el respaldo sistema_incidencias.bak (Descargas) está restaurado en el
+   PostgreSQL 19 local, base "sistema_incidencias". Trae solo catálogos (roles, 4 departamentos,
+   7 categorías, 5 estados, 4 prioridades con SLA). 0 usuarios y 0 incidencias.
+2. Backend reescrito sobre PostgreSQL (server/app.js, db.js, node.js). Ya no usa SQLite ni datos demo.
+   - Login por correo, sesión en cookie firmada (SESSION_SECRET en .env).
+   - Permisos por rol: admin todo, agente su departamento, solicitante lo suyo.
+   - Incidencias, comentarios (públicos/internos/resolución), historial, transferencias, usuarios.
+   - Respeta los triggers de la base (Regla 5: comentario de resolución; Regla 9: Cerrado = solo lectura).
+3. Frontend adaptado: login con correo, paneles de Administrador, Agente y Solicitante,
+   ficha de incidencia compartida (src/modules/incidents/components/IncidentDetail.vue).
+4. Pruebas (en una copia temporal de la base, ya borrada): 56 pruebas de API y 23 en navegador, todas OK.
+5. .env (NO se sube a git): datos PG*, SESSION_SECRET, ALLOW_REGISTRATION=false.
 
-Cuentas demo: admin/admin, tecnico/tecnico (también carlos, maria, jose), usuario/usuario
-
-PRUEBA MANUAL DEL BACKEND (en curso)
-------------------------------------
-Arrancar el servidor (terminal 1, DENTRO de la carpeta del proyecto):
+CÓMO ARRANCAR
+-------------
    cd C:\Users\Daniel\Desktop\Web2\Eticket
+   npm run crear-admin          (solo la primera vez: crea tu usuario administrador)
    npm run build
-   npm run lan:demo
+   npm run lan                  -> http://localhost:3000
 
-Probar (terminal 2, PowerShell; las variables se pierden si cierras la terminal):
-   $api = "http://localhost:3000/api"
-   $s = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-   Invoke-RestMethod "$api/auth/login" -Method Post -ContentType 'application/json' -Body '{"username":"usuario","password":"usuario"}' -WebSession $s
+Desarrollo con recarga en caliente (dos terminales):
+   npm run dev:api              (API en :3000)
+   npm run dev                  (Vite en :5173)
 
-   [OK] Paso 2  health -> ok True
-   [OK] Paso 3  login como usuario -> role=applicant
-   [  ] Paso 4a crear ticket:
-        $t = (Invoke-RestMethod "$api/tickets" -Method Post -ContentType 'application/json' -WebSession $s -Body '{"title":"Prueba backend","category":"Hardware","priority":"Media","description":"Mi primer test"}').ticket
-        $t | Select-Object id, title, status, technicianName
-   [  ] Paso 4b el solicitante intenta cambiar el estado -> DEBE dar error 403
-   [  ] Paso 4c el admin reasigna a Ana (technicianId 2) -> En proceso
-   [  ] Paso 4d tecnico agrega seguimiento y marca Resuelta
-   [  ] Paso 5  misma prueba desde el navegador en http://localhost:3000
+psql no está en el PATH:  & "C:\Program Files\PostgreSQL\19\bin\psql.exe" -U postgres -d sistema_incidencias
 
-   Nota: evitar tildes/eñes dentro de -Body en PowerShell 5.1.
-   Reiniciar datos locales: Ctrl+C, borrar data\tickops.db*, npm run lan:demo
+EN LÍNEA (tickops.bid) CON LA PC COMO SERVIDOR
+----------------------------------------------
+- Icono "TickOps" del escritorio (iniciar-tickops.bat): verifica PostgreSQL, abre el túnel,
+  compila y arranca la API. Cerrar esa ventana apaga el sitio en línea.
+- Cada push a main despliega el Worker de tickops.bid: sirve el sitio y reenvía /api al túnel.
+- Túnel de Cloudflare "tickops" (id bd19477c-...): origen.tickops.bid -> localhost:3000, SOLO rutas /api/.
+  Config: C:\Users\Daniel\.cloudflared\config.yml (+ credenciales .json, no compartir).
+- PostgreSQL (5432) nunca se publica. Si la PC está apagada, el sitio carga pero avisa "servidor apagado".
+- Ojo: existe otro túnel "tickops-tunnel" (servicio de Windows "Cloudflared", creado 12-nov),
+  configurado desde el panel de Cloudflare. No se tocó; revisar qué publica.
 
 LO QUE FALTA
 ------------
-- Terminar la prueba manual (pasos 4a-5) y probar la interfaz con los 3 roles.
-- Pantalla de registro (/registro sigue diciendo "no habilitado"; la API ya existe).
-- Pantalla de gestión de usuarios para el admin (la API /api/users ya existe).
-- Landing: el botón "Solicitar información" usa mailto:contacto@tickops.com
-  (dominio incorrecto). Corregirlo o crear un formulario de contacto con guardado en la base.
-- Reinicio automático diario de la demo pública (los datos demo son compartidos).
-- Límite de intentos en el login y avisos por correo (opcional).
+- Adjuntos (tabla adjuntos): subir/descargar archivos de hasta 5 MB.
+- Artículos FAQ (tabla articulos_faq): pantalla de consulta y edición.
+- Restablecer contraseña por correo (tabla tokens_restablecimiento).
+- Administrar departamentos y categorías desde el panel (hoy solo se ven).
+- Landing: botón "Solicitar información" usa mailto:contacto@tickops.com (dominio incorrecto).
+- Los datos viejos de SQLite (carpeta data/) ya no se usan; se pueden borrar.

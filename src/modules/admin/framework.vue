@@ -4,7 +4,7 @@ import RoleFramework from '../shared/RoleFramework.vue'
 const items = [
   { label: 'Panel principal', target: 'panel' },
   { label: 'Incidencias', target: 'incidencias' },
-  { label: 'Técnicos', target: 'technicians' }
+  { label: 'Agentes', target: 'agents' }
 ]
 </script>
 

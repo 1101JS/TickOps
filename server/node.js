@@ -1,40 +1,29 @@
-// Punto de entrada para instalación local (modo LAN). Requiere Node 22.13+ (usa node:sqlite, sin dependencias).
+// Servidor local (modo LAN): API + frontend compilado, conectado a PostgreSQL.
 //   npm run build && npm run lan
-// Variables: PORT (3000), HOST (0.0.0.0), DB_PATH (./data/tickops.db), ADMIN_USERNAME, ADMIN_PASSWORD,
-//            SEED_DEMO (false), ALLOW_REGISTRATION (true), PBKDF2_ITERATIONS (100000)
+// Variables (.env): PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE (conexión a PostgreSQL),
+//                   SESSION_SECRET, PORT (3000), HOST (0.0.0.0), ALLOW_REGISTRATION (false), PBKDF2_ITERATIONS (100000)
+import { randomBytes } from 'node:crypto'
 import { createServer } from 'node:http'
-import { mkdirSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path'
 import { Readable } from 'node:stream'
-import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { handleApi, readConfig } from './app.js'
+import { createDb } from './db.js'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const distDir = resolve(projectRoot, 'dist')
-const dbPath = resolve(projectRoot, process.env.DB_PATH || 'data/tickops.db')
 const port = Number(process.env.PORT || 3000)
 const host = process.env.HOST || '0.0.0.0'
 
-mkdirSync(dirname(dbPath), { recursive: true })
-const sqlite = new DatabaseSync(dbPath)
-sqlite.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;')
-
-const db = {
-  key: sqlite,
-  async all(sql, ...params) {
-    return sqlite.prepare(sql).all(...params)
-  },
-  async first(sql, ...params) {
-    return sqlite.prepare(sql).get(...params) ?? null
-  },
-  async run(sql, ...params) {
-    const result = sqlite.prepare(sql).run(...params)
-    return { lastId: Number(result.lastInsertRowid), changes: Number(result.changes) }
-  }
+const config = readConfig(process.env)
+if (!config.sessionSecret) {
+  config.sessionSecret = randomBytes(32).toString('base64url')
+  console.log('Aviso: falta SESSION_SECRET en .env; se usará una clave temporal y las sesiones se perderán al reiniciar.')
 }
-const context = { db, config: readConfig({ ...process.env, ...(process.argv.includes('--demo') ? { SEED_DEMO: 'true' } : {}) }) }
+
+const db = createDb()
+const context = { db, config }
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -70,7 +59,9 @@ async function serveStatic(pathname) {
 
 createServer(async (req, res) => {
   try {
-    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`)
+    // Detrás del túnel de Cloudflare la conexión del visitante es HTTPS (la cookie de sesión se marca Secure).
+    const protocol = req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http'
+    const url = new URL(req.url, `${protocol}://${req.headers.host || 'localhost'}`)
     let response
     if (url.pathname.startsWith('/api/')) {
       const hasBody = !['GET', 'HEAD'].includes(req.method)
@@ -98,10 +89,16 @@ createServer(async (req, res) => {
     res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' })
     res.end('Error interno del servidor.')
   }
-}).listen(port, host, () => {
+}).listen(port, host, async () => {
   console.log(`TickOps (modo LAN) escuchando en http://${host === '0.0.0.0' ? 'localhost' : host}:${port}`)
-  console.log(`Base de datos: ${dbPath}`)
-  if (!context.config.seedDemo && !context.config.adminPassword) {
-    console.log('Aviso: sin SEED_DEMO ni ADMIN_PASSWORD. Define ADMIN_PASSWORD en el primer arranque para crear el administrador.')
+  try {
+    const info = await db.first(
+      `SELECT current_database() AS base,
+              (SELECT COUNT(*) FROM usuarios u JOIN roles r ON r.id_rol = u.id_rol WHERE r.nombre = 'Administrador' AND u.activo) AS admins`
+    )
+    console.log(`Base de datos: PostgreSQL "${info.base}" en ${process.env.PGHOST || 'localhost'}:${process.env.PGPORT || 5432}`)
+    if (info.admins === 0) console.log('Aviso: no hay ningún administrador activo. Créalo con: npm run crear-admin')
+  } catch (error) {
+    console.error(`Error: no se pudo conectar a PostgreSQL (${error.message}). Revisa los datos PG* del archivo .env.`)
   }
 })

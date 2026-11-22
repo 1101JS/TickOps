@@ -1,25 +1,53 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import './LoginView.css'
-import { login, routeForRole } from '../../services/AuthService.js'
+import { getAuthConfig, login, register, routeForRole } from '../../services/AuthService.js'
 
 const route = useRoute()
 const router = useRouter()
-const username = ref('')
+const nombre = ref('')
+const correo = ref('')
 const password = ref('')
 const error = ref('')
+const notice = ref('')
+const sending = ref(false)
+const allowRegistration = ref(false)
 const isRegister = computed(() => route.name === 'Register')
 
 async function handleLogin() {
+  if (sending.value) return
+  sending.value = true
   error.value = ''
   try {
-    const session = await login(username.value.trim(), password.value)
+    const session = await login(correo.value.trim(), password.value)
     router.push({ name: routeForRole(session.role) })
   } catch (err) {
-    error.value = err.message || 'Usuario o contraseña incorrectos.'
+    error.value = err.message || 'Correo o contraseña incorrectos.'
+  } finally {
+    sending.value = false
   }
 }
+
+async function handleRegister() {
+  if (sending.value) return
+  sending.value = true
+  error.value = ''
+  try {
+    await register({ nombre: nombre.value.trim(), correo: correo.value.trim(), password: password.value })
+    password.value = ''
+    notice.value = 'Cuenta creada. Ya puedes iniciar sesión.'
+    router.push({ name: 'Login' })
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    sending.value = false
+  }
+}
+
+onMounted(async () => {
+  allowRegistration.value = (await getAuthConfig().catch(() => ({}))).allowRegistration === true
+})
 </script>
 
 <template>
@@ -32,30 +60,38 @@ async function handleLogin() {
       </div>
 
       <div class="login-heading">
-        <h2>{{ isRegister ? 'Acceso de demostración' : 'Bienvenido' }}</h2>
-        <p v-if="isRegister">El registro de cuentas estará disponible cuando conectemos el backend.</p>
-        <p v-else>Ingresa tus credenciales para continuar.</p>
+        <h2>{{ isRegister ? 'Crear cuenta' : 'Bienvenido' }}</h2>
+        <p v-if="!isRegister">Ingresa con tu correo institucional.</p>
       </div>
 
-      <div v-if="isRegister" class="demo-access">
-        <p>El registro de cuentas aún no está habilitado.</p>
+      <div v-if="isRegister && !allowRegistration" class="demo-access">
+        <p>Las cuentas las crea el administrador del sistema. Solicita la tuya a tu departamento de soporte.</p>
         <RouterLink to="/login" class="login-button access-link">Ir a iniciar sesión</RouterLink>
       </div>
 
-      <form v-else class="login-form" @submit.prevent="handleLogin">
+      <form v-else class="login-form" @submit.prevent="isRegister ? handleRegister() : handleLogin()">
+        <div v-if="isRegister" class="form-group">
+          <label for="nombre">Nombre completo</label>
+          <input id="nombre" v-model="nombre" type="text" maxlength="100" autocomplete="name" required />
+        </div>
+
         <div class="form-group">
-          <label for="username">Usuario</label>
-          <input id="username" v-model="username" type="text" placeholder="admin" autocomplete="username" required />
+          <label for="correo">Correo</label>
+          <input id="correo" v-model="correo" type="email" maxlength="120" placeholder="nombre@empresa.com" autocomplete="username" required />
         </div>
 
         <div class="form-group">
           <label for="password">Contraseña</label>
-          <input id="password" v-model="password" type="password" placeholder="Ingresa tu contraseña" autocomplete="current-password" required />
+          <input
+            id="password" v-model="password" type="password" :minlength="isRegister ? 8 : undefined" placeholder="Ingresa tu contraseña"
+            :autocomplete="isRegister ? 'new-password' : 'current-password'" required
+          />
         </div>
 
         <p v-if="error" class="login-error" role="alert">{{ error }}</p>
-        <button type="submit" class="login-button">Iniciar sesión</button>
-        <p class="demo-accounts">Demo: <strong>admin/admin</strong>, <strong>tecnico/tecnico</strong> o <strong>usuario/usuario</strong>.</p>
+        <p v-else-if="notice" class="login-notice" role="status">{{ notice }}</p>
+        <button type="submit" class="login-button" :disabled="sending">{{ sending ? 'Un momento…' : isRegister ? 'Crear cuenta' : 'Iniciar sesión' }}</button>
+        <p v-if="!isRegister && allowRegistration" class="demo-accounts">¿No tienes cuenta? <RouterLink to="/registro">Regístrate</RouterLink></p>
       </form>
 
       <footer class="login-footer"><p>UTH · Sistema de Soporte Técnico</p></footer>
@@ -64,5 +100,5 @@ async function handleLogin() {
 </template>
 
 <style scoped>
-.login-error{margin:0;color:#b42318;font-size:13px;line-height:1.5}.demo-accounts{margin:0;color:#64748b;font-size:11px;line-height:1.6}.demo-access{display:flex;flex-direction:column;gap:10px;padding:16px;border-radius:10px;background:#f1f5f9;color:#334155;font-size:14px}.demo-access p{margin:0 0 4px;line-height:1.5}.access-link{margin-top:8px;text-align:center;text-decoration:none}
+.login-error{margin:0;color:#b42318;font-size:13px;line-height:1.5}.login-notice{margin:0;color:#166534;font-size:13px}.demo-accounts{margin:0;color:#64748b;font-size:12px;line-height:1.6}.demo-access{display:flex;flex-direction:column;gap:10px;padding:16px;border-radius:10px;background:#f1f5f9;color:#334155;font-size:14px}.demo-access p{margin:0 0 4px;line-height:1.5}.access-link{margin-top:8px;text-align:center;text-decoration:none}
 </style>

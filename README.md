@@ -1,75 +1,98 @@
 # TickOps
 
-Plataforma de gestión de incidencias de soporte técnico (landing comercial + portal de tickets).
-Un mismo código funciona **en línea** (Cloudflare, demo en https://tickops.bid) y **en red local** (instalación del cliente).
+Plataforma de gestión de incidencias de soporte técnico (landing comercial + portal de incidencias).
+El backend trabaja sobre la base PostgreSQL **sistema_incidencias**: el navegador solo habla con la API y la API es la única que toca la base.
 
 ```
 src/        Frontend Vue 3 + Vite (landing, login, paneles por rol)
 server/
-  app.js      API REST (agnóstica de plataforma: Request → Response)
-  schema.js   Esquema SQL, migraciones automáticas y datos demo
-  worker.js   Entrada Cloudflare Workers + D1
-  node.js     Entrada LAN: Node + SQLite (node:sqlite), sirve también dist/
-wrangler.jsonc  Configuración de Cloudflare
+  app.js          API REST (Request → Response): sesión, permisos por rol y consultas a PostgreSQL
+  db.js           Conexión a PostgreSQL (paquete pg, variables PG* del .env)
+  node.js         Servidor local: API + frontend compilado (dist/)
+  crear-admin.js  Crea un administrador desde la consola
+  worker.js       Cloudflare (tickops.bid): sirve el sitio y reenvía /api al túnel de la PC
+  lib/crypto.js   Contraseñas PBKDF2 y cookies de sesión firmadas (HMAC)
+iniciar-tickops.bat  Arranca todo en la PC (PostgreSQL + túnel + API); hay un acceso directo en el escritorio
 ```
 
-## Modo en línea (Cloudflare)
+## Puesta en marcha
 
-Cada `git push` a `main` dispara Workers Builds: `npm run build` y `npx wrangler deploy`.
-- `/api/*` lo atiende el Worker; el resto se sirve como estático desde `dist/`.
-- La base D1 `tickops` se crea en el primer deploy y el esquema se aplica solo en la primera petición.
-- `SEED_DEMO=true` (en `wrangler.jsonc`) crea las cuentas demo:
+Requisitos: Node 22.13+ y PostgreSQL con la base `sistema_incidencias` restaurada.
 
-| Usuario | Contraseña | Rol |
+1. Crea el archivo `.env` en la raíz (no se sube a git):
+
+   ```
+   PGHOST=localhost
+   PGPORT=5432
+   PGUSER=postgres
+   PGPASSWORD=tu-contraseña
+   PGDATABASE=sistema_incidencias
+   SESSION_SECRET=una-cadena-larga-y-aleatoria
+   ALLOW_REGISTRATION=false
+   ```
+
+2. Instala dependencias y crea el primer administrador:
+
+   ```bash
+   npm install
+   npm run crear-admin
+   ```
+
+3. Arranca:
+
+   ```bash
+   npm run build
+   npm run lan        # http://localhost:3000 (y http://<ip-del-equipo>:3000 en la red)
+   ```
+
+### Desarrollo (recarga en caliente)
+
+Dos terminales:
+
+```bash
+npm run dev:api    # API en :3000, se reinicia sola al cambiar server/
+npm run dev        # Vite en :5173, reenvía /api al :3000
+```
+
+## En línea con la PC como servidor
+
+```
+Navegador → tickops.bid (Worker) → /api → túnel Cloudflare "tickops" (origen.tickops.bid) → PC: Node :3000 → PostgreSQL
+```
+
+- El túnel sale desde la PC (no se abren puertos) y solo deja pasar rutas `/api/`; PostgreSQL no se publica.
+- Configuración del túnel en `%USERPROFILE%\.cloudflared\config.yml`; la API acepta el origen de `TRUSTED_ORIGINS` (.env).
+- Con la PC apagada el sitio carga, pero la API responde "El servidor de TickOps está apagado".
+
+## Roles
+
+| Rol | Ve | Puede |
 |---|---|---|
-| admin | admin | Administrador |
-| tecnico, carlos, maria, jose | tecnico | Técnico |
-| usuario | usuario | Solicitante |
+| Administrador | Todas las incidencias | Asignar cualquier agente del departamento, cambiar prioridad/categoría/estado, transferir, gestionar usuarios |
+| Agente | La cola de su departamento (y lo que él mismo solicitó) | Tomar/soltar incidencias, cambiar estado, notas internas, comentario de resolución, transferir |
+| Solicitante | Solo sus incidencias | Registrar, comentar, confirmar la solución (cerrar) o reabrir dentro de 3 días hábiles |
 
-Deploy manual: `npx wrangler login` y luego `npm run deploy`.
+Flujo de estados: Pendiente → En Proceso → Resuelto → Cerrado (o Rechazado). Cerrado y Rechazado son de solo lectura.
+Las reglas de los triggers de la base se respetan y sus mensajes llegan al usuario (p. ej. no se puede marcar Resuelto sin comentario de resolución).
 
-## Modo LAN (cliente)
+## Seguridad
 
-Requiere Node 22.13 o superior. No necesita internet ni servicios de Cloudflare.
-
-```bash
-npm install
-npm run build
-# primer arranque: crea el administrador
-ADMIN_PASSWORD="una-clave-segura" npm run lan     # PowerShell: $env:ADMIN_PASSWORD="..."; npm run lan
-```
-
-Queda disponible en `http://<ip-del-servidor>:3000` para toda la red. También se puede crear un archivo `.env`:
-
-```
-PORT=3000
-HOST=0.0.0.0
-DB_PATH=data/tickops.db
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=una-clave-segura
-ALLOW_REGISTRATION=true
-PBKDF2_ITERATIONS=100000
-```
-
-`npm run lan:demo` arranca con las cuentas demo. Para respaldar, basta con copiar `data/tickops.db`.
-
-## Desarrollo
-
-```bash
-npm run dev:api   # Worker + D1 local en :8787 (o: npm run lan, y API_TARGET=http://localhost:3000)
-npm run dev       # Vite en :5173 con proxy /api
-```
+- Contraseñas con PBKDF2-SHA256 (100 000 iteraciones) y sal aleatoria.
+- Sesión en cookie `HttpOnly` + `SameSite=Lax`, firmada con `SESSION_SECRET`, válida 12 h. Cambiar la contraseña invalida las sesiones anteriores; desactivar un usuario lo saca de inmediato.
+- Todas las consultas son parametrizadas. Las peticiones que modifican datos deben venir del mismo origen (CSRF).
+- 10 intentos fallidos de login por correo bloquean ese correo 15 minutos.
 
 ## API
 
 | Método | Ruta | Roles |
 |---|---|---|
-| POST | /api/auth/login · /logout · /register | público |
-| GET | /api/auth/me | público |
-| GET | /api/tickets · /api/tickets/:id | todos (filtrado por rol) |
-| POST | /api/tickets | admin, solicitante (asignación automática al técnico con menos carga) |
-| PATCH | /api/tickets/:id | admin (todo) · técnico (solo estado) |
-| POST | /api/tickets/:id/updates | todos sobre sus tickets |
-| GET | /api/technicians | admin, técnico |
-| GET/POST | /api/users | admin |
-| GET | /api/health | público |
+| POST | /api/auth/login · /logout · /register | público (registro solo si ALLOW_REGISTRATION=true) |
+| GET | /api/auth/me · /api/auth/config · /api/health | público |
+| GET | /api/catalogos | todos |
+| GET | /api/incidencias · /api/incidencias/:id | todos (filtrado por rol) |
+| POST | /api/incidencias | todos |
+| PATCH | /api/incidencias/:id | según rol: `idPrioridad`, `idCategoria`, `idAgente`, `estado`, `comentario` |
+| POST | /api/incidencias/:id/comentarios | todos sobre sus incidencias (`esInterno`/`esResolucion` solo soporte) |
+| POST | /api/incidencias/:id/transferencias | admin, agente del departamento |
+| GET | /api/agentes | admin, agente |
+| GET · POST · PATCH | /api/usuarios · /api/usuarios/:id | admin |
