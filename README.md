@@ -19,6 +19,7 @@ server/             Backend Node.js + Express
   node.js         Servidor local: API Express + frontend compilado (dist/) + respaldo automático
   crear-admin.js  Crea un administrador desde la consola
   worker.js       Cloudflare (tickops.bid): sirve el sitio y reenvía /api al túnel de la PC
+test/               Pruebas automáticas (npm test)
 iniciar-tickops.bat  Arranca todo en la PC (PostgreSQL + túnel + API); hay un acceso directo en el escritorio
 ```
 
@@ -74,6 +75,22 @@ Navegador → tickops.bid (Worker) → /api → túnel Cloudflare "tickops" (ori
 - El túnel sale desde la PC (no se abren puertos) y solo deja pasar rutas `/api/`; PostgreSQL no se publica.
 - Configuración del túnel en `%USERPROFILE%\.cloudflared\config.yml`; la API acepta el origen de `TRUSTED_ORIGINS` (.env).
 - Con la PC apagada el sitio carga, pero la API responde "El servidor de TickOps está apagado".
+
+## Pruebas
+
+```bash
+npm test
+```
+
+Usa el ejecutor de pruebas integrado de Node (`node:test`), sin dependencias extra. Necesita PostgreSQL y el `.env`.
+
+- `test/lib.test.js`: lógica sin base de datos (validaciones, permisos por rol, flujo de estados, SLA, cifrado).
+- `test/api.test.js`: la API completa con Express (sesión, roles, usuarios, categorías, ciclo de vida de una
+  incidencia, comentarios internos, transferencias, protecciones CSRF/JSON).
+- `test/backup.test.js`: respaldo cifrado, clave incorrecta y retención.
+
+Cada archivo crea una base temporal copiando de `PGDATABASE` **solo la estructura y los catálogos**
+(sin usuarios ni incidencias reales) y la borra al terminar; la base real no se modifica.
 
 ## Respaldos
 

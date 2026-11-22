@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import '../styles/AdminDashboard.css'
 import ThemeSwitcher from '../../../components/ThemeSwitcher.vue'
@@ -29,6 +29,10 @@ const error = ref('')
 const search = ref('')
 const statusFilter = ref('abiertas')
 const departmentFilter = ref('')
+const priorityFilter = ref('')
+const categoryFilter = ref('')
+const dateFrom = ref('')
+const dateTo = ref('')
 
 const emptyIncident = () => ({ titulo: '', descripcion: '', idCategoria: '', idPrioridad: catalogs.value.prioridades.find((p) => p.nombre === 'Media')?.id ?? '' })
 const newIncident = ref(emptyIncident())
@@ -44,15 +48,46 @@ const categoryGroups = computed(() => categoriesByDepartment(catalogs.value.cate
 const open = computed(() => incidents.value.filter((i) => !i.estadoFinal && i.estado !== 'Resuelto'))
 const unassigned = computed(() => open.value.filter((i) => !i.agenteId))
 const late = computed(() => incidents.value.filter((i) => i.sla.resolucionVencida))
+const solved = computed(() => incidents.value.filter((i) => ['Resuelto', 'Cerrado'].includes(i.estado)))
+// Categorías del filtro: las del departamento elegido (o todas, agrupadas por departamento).
+const filterCategoryGroups = computed(() =>
+  categoriesByDepartment(catalogs.value.categorias.filter((c) => !departmentFilter.value || c.departamentoId === Number(departmentFilter.value)))
+)
+const activeFilters = computed(() =>
+  Boolean(search.value || departmentFilter.value || priorityFilter.value || categoryFilter.value || dateFrom.value || dateTo.value || statusFilter.value !== 'abiertas')
+)
 const filteredIncidents = computed(() => {
   const term = search.value.trim().toLowerCase()
+  // Las fechas del filtro son días locales completos: desde las 00:00 del inicio hasta las 23:59 del fin.
+  const from = dateFrom.value ? new Date(`${dateFrom.value}T00:00:00`) : null
+  const to = dateTo.value ? new Date(`${dateTo.value}T23:59:59.999`) : null
   return incidents.value.filter((i) => {
     if (statusFilter.value === 'abiertas' && (i.estadoFinal || i.estado === 'Resuelto')) return false
     if (statusFilter.value === 'vencidas' && !i.sla.resolucionVencida) return false
     if (!['abiertas', 'vencidas', 'todas'].includes(statusFilter.value) && i.estado !== statusFilter.value) return false
     if (departmentFilter.value && i.departamentoId !== Number(departmentFilter.value)) return false
+    if (priorityFilter.value && i.prioridadId !== Number(priorityFilter.value)) return false
+    if (categoryFilter.value && i.categoriaId !== Number(categoryFilter.value)) return false
+    const created = new Date(i.fechaCreacion)
+    if (from && created < from) return false
+    if (to && created > to) return false
     return !term || [i.id, i.titulo, i.categoria, i.solicitante, i.agente].join(' ').toLowerCase().includes(term)
   })
+})
+
+function clearFilters() {
+  search.value = ''
+  departmentFilter.value = ''
+  priorityFilter.value = ''
+  categoryFilter.value = ''
+  dateFrom.value = ''
+  dateTo.value = ''
+  statusFilter.value = 'abiertas'
+}
+
+// Si cambia el departamento y la categoría elegida ya no le pertenece, se quita.
+watch(departmentFilter, () => {
+  if (categoryFilter.value && !filterCategoryGroups.value.some((g) => g.items.some((c) => c.id === Number(categoryFilter.value)))) categoryFilter.value = ''
 })
 const visibleCategories = computed(() =>
   categories.value.filter((c) => !categoryDepartment.value || c.departamentoId === Number(categoryDepartment.value))
@@ -221,6 +256,7 @@ onMounted(loadData)
         <article class="stat-card"><span>Incidencias abiertas</span><strong>{{ open.length }}</strong><small>Pendientes o en proceso</small></article>
         <article class="stat-card warning"><span>Sin asignar</span><strong>{{ unassigned.length }}</strong><small>Esperando agente</small></article>
         <article class="stat-card danger"><span>SLA vencido</span><strong>{{ late.length }}</strong><small>Fuera del tiempo de resolución</small></article>
+        <article class="stat-card solved"><span>Resueltas</span><strong>{{ solved.length }}</strong><small>Resueltas o cerradas · {{ incidents.length }} en total</small></article>
         <article class="stat-card success"><span>Agentes activos</span><strong>{{ agents.length }}</strong><small>{{ users.length }} usuarios en total</small></article>
       </section>
 
@@ -228,11 +264,21 @@ onMounted(loadData)
         <div class="section-heading management-heading"><div><p class="eyebrow">SEGUIMIENTO</p><h2>Incidencias</h2></div><span>{{ filteredIncidents.length }} de {{ incidents.length }}</span></div>
         <div class="toolbar">
           <input v-model="search" type="search" placeholder="Buscar por número, título, solicitante o agente" aria-label="Buscar incidencias" />
-          <select v-model="departmentFilter" aria-label="Filtrar por departamento"><option value="">Todos los departamentos</option><option v-for="d in catalogs.departamentos" :key="d.id" :value="d.id">{{ d.nombre }}</option></select>
           <select v-model="statusFilter" aria-label="Filtrar por estado">
-            <option value="abiertas">Abiertas</option><option value="vencidas">SLA vencido</option><option value="todas">Todas</option>
+            <option value="abiertas">Abiertas</option><option value="vencidas">SLA vencido</option><option value="todas">Todos los estados</option>
             <option v-for="e in catalogs.estados" :key="e.id" :value="e.nombre">{{ e.nombre }}</option>
           </select>
+          <select v-model="priorityFilter" aria-label="Filtrar por prioridad"><option value="">Todas las prioridades</option><option v-for="p in catalogs.prioridades" :key="p.id" :value="p.id">{{ p.nombre }}</option></select>
+        </div>
+        <div class="toolbar filter-row">
+          <select v-model="departmentFilter" aria-label="Filtrar por departamento"><option value="">Todos los departamentos</option><option v-for="d in catalogs.departamentos" :key="d.id" :value="d.id">{{ d.nombre }}</option></select>
+          <select v-model="categoryFilter" aria-label="Filtrar por categoría">
+            <option value="">Todas las categorías</option>
+            <optgroup v-for="g in filterCategoryGroups" :key="g.departamento" :label="g.departamento"><option v-for="c in g.items" :key="c.id" :value="c.id">{{ c.nombre }}</option></optgroup>
+          </select>
+          <label class="date-filter">Desde<input v-model="dateFrom" type="date" :max="dateTo || undefined" aria-label="Registradas desde" /></label>
+          <label class="date-filter">Hasta<input v-model="dateTo" type="date" :min="dateFrom || undefined" aria-label="Registradas hasta" /></label>
+          <button v-if="activeFilters" type="button" class="text-button" @click="clearFilters">Limpiar filtros</button>
         </div>
         <div class="incident-table-wrap"><table class="incident-table">
           <thead><tr><th>Incidencia</th><th>Departamento</th><th>Prioridad</th><th>Estado</th><th>Agente</th><th></th></tr></thead>

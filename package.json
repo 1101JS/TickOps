@@ -11,6 +11,7 @@
     "deploy": "vite build && wrangler deploy",
     "lan": "node --env-file-if-exists=.env server/node.js",
     "crear-admin": "node --env-file-if-exists=.env server/crear-admin.js",
+    "test": "node --env-file-if-exists=.env --test --test-concurrency=1 \"test/*.test.js\"",
     "respaldo": "node --env-file-if-exists=.env server/respaldo.js",
     "descifrar-respaldo": "node --env-file-if-exists=.env server/respaldo.js descifrar"
   },

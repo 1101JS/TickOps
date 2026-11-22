@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import AgentFramework from '../../agent/framework.vue'
 import '../styles/RoleViews.css'
 import { getSession } from '../../../services/AuthService.js'
-import { formatDate, getIncidents, replaceIncident, slug, updateIncident } from '../../../services/IncidentService.js'
+import { formatDate, getCatalogs, getIncidents, replaceIncident, slug, updateIncident } from '../../../services/IncidentService.js'
 
 const router = useRouter()
 const user = getSession()
@@ -13,6 +13,10 @@ const notice = ref('')
 const error = ref('')
 const tab = ref('cola')
 const search = ref('')
+const priorityFilter = ref('')
+const categoryFilter = ref('')
+const catalogs = ref({ categorias: [], prioridades: [] })
+const ownCategories = computed(() => catalogs.value.categorias.filter((c) => c.departamentoId === user?.departamentoId))
 
 // El servidor devuelve la cola del departamento del agente (más las incidencias que él mismo haya solicitado).
 const department = computed(() => incidents.value.filter((i) => i.departamentoId === user?.departamentoId))
@@ -28,12 +32,18 @@ const tabs = computed(() => [
 const visible = computed(() => {
   const term = search.value.trim().toLowerCase()
   const items = tabs.value.find((t) => t.key === tab.value)?.items || []
-  return term ? items.filter((i) => [i.id, i.titulo, i.categoria, i.solicitante, i.agente].join(' ').toLowerCase().includes(term)) : items
+  return items.filter((i) => {
+    if (priorityFilter.value && i.prioridadId !== Number(priorityFilter.value)) return false
+    if (categoryFilter.value && i.categoriaId !== Number(categoryFilter.value)) return false
+    return !term || [i.id, i.titulo, i.categoria, i.solicitante, i.agente].join(' ').toLowerCase().includes(term)
+  })
 })
 
 async function load() {
   try {
-    incidents.value = await getIncidents()
+    const [list, catalog] = await Promise.all([getIncidents(), getCatalogs()])
+    incidents.value = list
+    catalogs.value = catalog
   } catch (err) {
     error.value = err.message
   }
@@ -76,7 +86,11 @@ onMounted(load)
     <section id="queue" class="role-card">
       <div class="section-title">
         <div><p class="eyebrow">BANDEJA DE TRABAJO</p><h2>Incidencias</h2></div>
-        <input v-model="search" class="filter" type="search" placeholder="Buscar…" aria-label="Buscar incidencias" />
+        <div class="queue-filters">
+          <select v-model="priorityFilter" class="filter" aria-label="Filtrar por prioridad"><option value="">Todas las prioridades</option><option v-for="p in catalogs.prioridades" :key="p.id" :value="p.id">{{ p.nombre }}</option></select>
+          <select v-model="categoryFilter" class="filter" aria-label="Filtrar por categoría"><option value="">Todas las categorías</option><option v-for="c in ownCategories" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
+          <input v-model="search" class="filter" type="search" placeholder="Buscar…" aria-label="Buscar incidencias" />
+        </div>
       </div>
       <div class="tabs" role="tablist">
         <button v-for="t in tabs" :key="t.key" type="button" role="tab" :aria-selected="tab === t.key" :class="{ active: tab === t.key }" @click="tab = t.key">{{ t.label }} <span>{{ t.items.length }}</span></button>

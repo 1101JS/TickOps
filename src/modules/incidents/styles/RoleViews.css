@@ -19,3 +19,7 @@
 
 /* Formulario de nueva incidencia a ancho de lectura cómodo */
 .narrow-card{max-width:760px}
+
+/* Filtros de la bandeja del agente */
+.queue-filters{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+@media(max-width:560px){.queue-filters{justify-content:stretch}.queue-filters .filter{flex:1 1 140px}}

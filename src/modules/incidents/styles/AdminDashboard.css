@@ -194,3 +194,69 @@
 :root[data-theme="dark"] .text-button.danger-text {
   color: #f87171;
 }
+
+/* Indicador de resueltas y segunda fila de filtros */
+.stats-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.stat-card.solved strong {
+  color: #2563eb;
+}
+
+:root[data-theme="dark"] .stat-card.solved strong {
+  color: #60a5fa;
+}
+
+.filter-row {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.filter-row select {
+  width: 200px;
+}
+
+.date-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--dash-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.toolbar .date-filter input {
+  width: 150px;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] .toolbar .date-filter input {
+  color-scheme: dark;
+}
+
+@media (max-width: 1250px) {
+  .stats-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1050px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .filter-row select,
+  .date-filter,
+  .toolbar .date-filter input {
+    width: 100%;
+  }
+}
+
+@media (max-width: 440px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
