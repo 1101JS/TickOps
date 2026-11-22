@@ -5,7 +5,9 @@ import { useRoute, useRouter } from 'vue-router'
 import ApplicantFramework from '../../applicant/framework.vue'
 import '../styles/RoleViews.css'
 import { getSession } from '../../../services/AuthService.js'
-import { categoriesByDepartment, createIncident, formatDate, getCatalogs, getIncidents, slug } from '../../../services/IncidentService.js'
+import {
+  ATTACHMENT_EXTENSIONS, categoriesByDepartment, checkAttachments, createIncident, formatDate, getCatalogs, getIncidents, slug, uploadAttachments
+} from '../../../services/IncidentService.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,6 +20,9 @@ const notice = ref('')
 const error = ref('')
 const sending = ref(false)
 const filter = ref('abiertas')
+const files = ref([])
+const fileInput = ref(null)
+const acceptedTypes = ATTACHMENT_EXTENSIONS.join(',')
 
 const isNew = computed(() => route.params.vista === 'nueva')
 const groups = computed(() => categoriesByDepartment(catalogs.value.categorias))
@@ -38,17 +43,32 @@ async function load() {
   }
 }
 
+function pickFiles(event) {
+  files.value = [...event.target.files]
+  error.value = checkAttachments(files.value)
+}
+
 async function submit() {
   if (sending.value) return
+  const problem = checkAttachments(files.value)
+  if (problem) {
+    error.value = problem
+    return
+  }
   sending.value = true
   error.value = ''
   try {
     const incident = await createIncident({ ...form.value, idCategoria: Number(form.value.idCategoria), idPrioridad: Number(form.value.idPrioridad) })
     incidents.value.unshift(incident)
+    // Los archivos se suben después de crear la incidencia; si fallan, la incidencia ya quedó registrada.
+    let filesProblem = ''
+    if (files.value.length) await uploadAttachments(incident.id, files.value).catch((err) => { filesProblem = err.message })
     form.value = emptyForm()
+    files.value = []
     filter.value = 'abiertas'
     await router.push({ name: 'ApplicantDashboard' })
     notice.value = `Tu incidencia #${incident.id} fue enviada a ${incident.departamento}. Te avisaremos aquí cuando la atiendan.`
+    if (filesProblem) error.value = `La incidencia #${incident.id} se registró, pero los archivos no se pudieron adjuntar: ${filesProblem} Puedes adjuntarlos desde "Ver detalle".`
   } catch (err) {
     error.value = err.message
   } finally {
@@ -100,6 +120,10 @@ onMounted(load)
         </div>
         <p v-if="selectedCategory" class="hint">{{ selectedCategory.descripcion }} · la atenderá {{ selectedCategory.departamento }}.</p>
         <label>Descripción<textarea v-model="form.descripcion" maxlength="5000" placeholder="Indica qué ocurre, dónde sucede y desde cuándo..." required /></label>
+        <label>Capturas o archivos <span class="optional-note">(opcional · hasta 5, máximo 5 MB cada uno)</span>
+          <input ref="fileInput" type="file" multiple :accept="acceptedTypes" @change="pickFiles" />
+        </label>
+        <p v-if="files.length" class="hint">{{ files.length }} archivo(s) seleccionado(s): {{ files.map((f) => f.name).join(', ') }}</p>
         <button class="primary" type="submit" :disabled="sending">{{ sending ? 'Enviando...' : 'Enviar incidencia' }}</button>
       </form>
     </section>

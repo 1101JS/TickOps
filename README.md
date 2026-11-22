@@ -8,10 +8,11 @@ src/        Frontend Vue 3 + Vite (landing, login, paneles por rol)
 server/             Backend Node.js + Express
   app.js          Crea la aplicación Express de la API REST y monta middlewares y routers
   middleware.js   CSRF, sesión (req.user), control de roles, validación de JSON y manejo de errores
-  routes/         Un router por recurso: auth, catalogos, incidencias, categorias, usuarios (y agentes)
+  routes/         Un router por recurso: auth, catalogos, incidencias (+ adjuntos), categorias, usuarios (y agentes)
   lib/http.js     Errores HTTP, validación de datos y traducción de errores de PostgreSQL
   lib/users.js    Usuarios, sesión firmada y límite de intentos de login
   lib/incidents.js Reglas de incidencias: permisos por rol, estados permitidos, SLA e historial
+  lib/attachments.js Adjuntos: tipos permitidos, validación del contenido y almacenamiento en disco
   lib/crypto.js   Contraseñas PBKDF2 y cookies de sesión firmadas (HMAC)
   db.js           Conexión a PostgreSQL (paquete pg, variables PG* del .env)
   backup.js       Respaldo cifrado de la base (pg_dump + AES-256-GCM) y retención
@@ -41,6 +42,8 @@ Requisitos: Node 22.13+ y PostgreSQL con la base `sistema_incidencias` restaurad
    BACKUP_DIR=C:\Users\<usuario>\OneDrive\Respaldos TickOps
    BACKUP_PASSWORD=otra-cadena-larga-y-aleatoria
    BACKUP_KEEP=14
+   # Carpeta de adjuntos (opcional; por defecto ./adjuntos, fuera de git)
+   ATTACHMENTS_DIR=
    ```
 
 2. Instala dependencias y crea el primer administrador:
@@ -88,6 +91,7 @@ Usa el ejecutor de pruebas integrado de Node (`node:test`), sin dependencias ext
 - `test/api.test.js`: la API completa con Express (sesión, roles, usuarios, categorías, ciclo de vida de una
   incidencia, comentarios internos, transferencias, protecciones CSRF/JSON).
 - `test/backup.test.js`: respaldo cifrado, clave incorrecta y retención.
+- `test/attachments.test.js`: adjuntos (subir, descargar, permisos, tipos y tamaños, respaldo de archivos).
 
 Cada archivo crea una base temporal copiando de `PGDATABASE` **solo la estructura y los catálogos**
 (sin usuarios ni incidencias reales) y la borra al terminar; la base real no se modifica.
@@ -97,6 +101,8 @@ Cada archivo crea una base temporal copiando de `PGDATABASE` **solo la estructur
 Mientras TickOps está encendido, el servidor revisa al arrancar y cada hora: si el último respaldo tiene 24 h o más,
 crea uno nuevo en `BACKUP_DIR` (`tickops-AAAA-MM-DD_HHMMSS.dump.enc`) y conserva los últimos `BACKUP_KEEP`.
 El archivo es un `pg_dump` cifrado con AES-256-GCM usando `BACKUP_PASSWORD`.
+Los adjuntos (que no están dentro de la base) se copian cifrados a `BACKUP_DIR\adjuntos`, solo los nuevos;
+para recuperarlos: `npm run respaldo -- restaurar-adjuntos`.
 
 - **Guarda `BACKUP_PASSWORD` fuera de la PC** (gestor de contraseñas): si el disco falla, sin esa clave los respaldos de la nube no sirven.
 - `BACKUP_DIR` puede ser cualquier carpeta sincronizada (OneDrive, Google Drive para escritorio, etc.); cambiar de servicio es cambiar esa línea.
@@ -115,6 +121,15 @@ pg_restore --no-owner -d sistema_incidencias_restaurada "ruta\archivo.dump"
 ```
 
 Luego se revisa y, si está bien, se apunta `PGDATABASE` a la base restaurada. Borra el `.dump` descifrado al terminar.
+
+## Adjuntos y reportes
+
+- **Adjuntos:** en la ficha de cada incidencia (y al registrarla) se pueden subir capturas, PDF, texto, Word, Excel,
+  PowerPoint o ZIP; hasta 5 por envío, 5 MB cada uno y 20 por incidencia. Se valida la extensión y la firma del
+  archivo; no se aceptan HTML, SVG ni ejecutables. Descarga: quien ve la incidencia. Eliminar: quien lo subió o el admin.
+  Una incidencia cerrada o rechazada no admite cambios en sus adjuntos.
+- **Reportes:** en el panel del administrador, "Exportar Excel" y "Exportar PDF" generan el listado con los filtros
+  aplicados (Excel `.xlsx` real y PDF con resumen por estado). Se generan en el navegador.
 
 ## Roles
 

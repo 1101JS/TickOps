@@ -8,11 +8,16 @@
 //
 // Formato del archivo .dump.enc: "TKBK1" + sal (16 bytes) + IV (12) + datos cifrados + etiqueta GCM (16).
 // Al descifrarlo se obtiene un volcado en formato personalizado de PostgreSQL (pg_restore).
+//
+// Adjuntos: pg_dump no incluye los archivos subidos (ATTACHMENTS_DIR). En cada respaldo se copian cifrados
+// a BACKUP_DIR\adjuntos los que todavía no estén ahí (mismo formato, extensión .enc). No se borran de esa
+// carpeta aunque se eliminen de la incidencia, porque un respaldo anterior de la base puede referirse a ellos.
 import { spawn } from 'node:child_process'
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto'
 import { createWriteStream, existsSync, readdirSync } from 'node:fs'
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
+import { attachmentsDir } from './lib/attachments.js'
 
 const MAGIC = Buffer.from('TKBK1')
 const PREFIX = 'tickops-'
@@ -28,7 +33,8 @@ export function backupConfig(env = process.env) {
     dir: env.BACKUP_DIR || '',
     password: env.BACKUP_PASSWORD || '',
     keep: Math.max(1, Number(env.BACKUP_KEEP || 14)),
-    pgBin: env.PG_BIN || ''
+    pgBin: env.PG_BIN || '',
+    attachmentsDir: attachmentsDir(env)
   }
 }
 
@@ -99,24 +105,65 @@ export async function createBackup(config = backupConfig()) {
     await rm(old.path, { force: true })
     removed.push(old.name)
   }
-  return { path: final, bytes: (await stat(final)).size, removed }
+  const attachments = config.attachmentsDir ? await syncAttachments(config) : 0
+  return { path: final, bytes: (await stat(final)).size, removed, attachments }
+}
+
+function encryptBuffer(buffer, password) {
+  const salt = randomBytes(16)
+  const iv = randomBytes(12)
+  const cipher = createCipheriv('aes-256-gcm', deriveKey(password, salt), iv)
+  return Buffer.concat([MAGIC, salt, iv, cipher.update(buffer), cipher.final(), cipher.getAuthTag()])
+}
+
+function decryptBuffer(data, password) {
+  if (!data.subarray(0, MAGIC.length).equals(MAGIC)) throw new Error('El archivo no es un respaldo de TickOps.')
+  const decipher = createDecipheriv('aes-256-gcm', deriveKey(password, data.subarray(5, 21)), data.subarray(21, 33))
+  decipher.setAuthTag(data.subarray(data.length - 16))
+  try {
+    return Buffer.concat([decipher.update(data.subarray(33, data.length - 16)), decipher.final()])
+  } catch {
+    throw new Error('Clave incorrecta o archivo dañado.')
+  }
+}
+
+// Copia cifrados a BACKUP_DIR\adjuntos los adjuntos que aún no estén respaldados. Devuelve cuántos copió.
+export async function syncAttachments(config) {
+  if (!existsSync(config.attachmentsDir)) return 0
+  const target = join(config.dir, 'adjuntos')
+  await mkdir(target, { recursive: true })
+  const done = new Set(await readdir(target))
+  let copied = 0
+  for (const name of await readdir(config.attachmentsDir)) {
+    if (done.has(`${name}.enc`) || name.endsWith('.parcial')) continue
+    const encrypted = encryptBuffer(await readFile(join(config.attachmentsDir, name)), config.password)
+    await writeFile(join(target, `${name}.enc.parcial`), encrypted)
+    await rename(join(target, `${name}.enc.parcial`), join(target, `${name}.enc`))
+    copied++
+  }
+  return copied
+}
+
+// Descifra los adjuntos respaldados y los deja en ATTACHMENTS_DIR (solo los que falten). Devuelve cuántos restauró.
+export async function restoreAttachments(config) {
+  const source = join(config.dir, 'adjuntos')
+  if (!existsSync(source)) return 0
+  await mkdir(config.attachmentsDir, { recursive: true })
+  const present = new Set(await readdir(config.attachmentsDir))
+  let restored = 0
+  for (const name of await readdir(source)) {
+    if (!name.endsWith('.enc')) continue
+    const original = name.slice(0, -4)
+    if (present.has(original)) continue
+    await writeFile(join(config.attachmentsDir, original), decryptBuffer(await readFile(join(source, name)), config.password))
+    restored++
+  }
+  return restored
 }
 
 // Descifra un respaldo y escribe el volcado listo para pg_restore. Devuelve la ruta del .dump.
 export async function decryptBackup(file, password, output = file.replace(/\.enc$/, '')) {
-  const data = await readFile(file)
-  if (!data.subarray(0, MAGIC.length).equals(MAGIC)) throw new Error('El archivo no es un respaldo de TickOps.')
-  const salt = data.subarray(5, 21)
-  const iv = data.subarray(21, 33)
-  const tag = data.subarray(data.length - 16)
-  const decipher = createDecipheriv('aes-256-gcm', deriveKey(password, salt), iv)
-  decipher.setAuthTag(tag)
-  let plain
-  try {
-    plain = Buffer.concat([decipher.update(data.subarray(33, data.length - 16)), decipher.final()])
-  } catch {
-    throw new Error('Clave incorrecta o archivo dañado.')
-  }
+  const plain = decryptBuffer(await readFile(file), password)
   await writeFile(output, plain)
   return output
 }
@@ -144,7 +191,7 @@ export function scheduleBackups(config = backupConfig(), log = console) {
         return
       }
       const result = await createBackup(config)
-      log.log(`Respaldo creado: ${basename(result.path)} (${Math.ceil(result.bytes / 1024)} KB)${result.removed.length ? `; borrados ${result.removed.length} antiguos` : ''}.`)
+      log.log(`Respaldo creado: ${basename(result.path)} (${Math.ceil(result.bytes / 1024)} KB)${result.attachments ? `; ${result.attachments} adjunto(s) nuevos copiados` : ''}${result.removed.length ? `; borrados ${result.removed.length} antiguos` : ''}.`)
     } catch (error) {
       log.error(`Error en el respaldo automático: ${error.message}`)
     } finally {

@@ -1,4 +1,4 @@
-import { api } from './api.js'
+import { api, apiUpload } from './api.js'
 
 // ---------- Formato ----------
 
@@ -117,4 +117,42 @@ export async function updateCategory(id, changes) {
 
 export async function deleteCategory(id) {
   await api(`/categorias/${id}`, { method: 'DELETE' })
+}
+
+// ---------- Adjuntos ----------
+
+export const ATTACHMENT_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf', '.txt', '.log', '.csv', '.docx', '.xlsx', '.pptx', '.zip']
+export const ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024
+export const ATTACHMENT_MAX_FILES = 5
+
+// Revisa en el navegador lo mismo que el servidor (tipo, tamaño y cantidad) para avisar antes de subir.
+export function checkAttachments(files) {
+  if (files.length > ATTACHMENT_MAX_FILES) return `Puedes subir hasta ${ATTACHMENT_MAX_FILES} archivos a la vez.`
+  for (const file of files) {
+    const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
+    if (!ATTACHMENT_EXTENSIONS.includes(extension)) return `"${file.name}": tipo no permitido (${ATTACHMENT_EXTENSIONS.join(', ')}).`
+    if (file.size > ATTACHMENT_MAX_BYTES) return `"${file.name}" supera el máximo de 5 MB.`
+    if (!file.size) return `"${file.name}" está vacío.`
+  }
+  return ''
+}
+
+export async function uploadAttachments(incidentId, files) {
+  const form = new FormData()
+  for (const file of files) form.append('archivos', file)
+  return (await apiUpload(`/incidencias/${incidentId}/adjuntos`, form)).incidencia
+}
+
+export async function deleteAttachment(incidentId, attachmentId) {
+  return (await api(`/incidencias/${incidentId}/adjuntos/${attachmentId}`, { method: 'DELETE' })).incidencia
+}
+
+export function attachmentUrl(incidentId, attachmentId, download = false) {
+  return `/api/incidencias/${incidentId}/adjuntos/${attachmentId}${download ? '?descargar' : ''}`
+}
+
+export function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }

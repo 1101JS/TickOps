@@ -4,6 +4,9 @@
 // SOLO la estructura (tablas, triggers, funciones) y los catálogos (roles, departamentos, categorías,
 // estados y prioridades). No se copian usuarios ni incidencias reales, y la base se borra al terminar.
 import { spawn } from 'node:child_process'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { hashPassword } from '../server/lib/crypto.js'
 import { createApp, readConfig } from '../server/app.js'
 import { pgTool } from '../server/backup.js'
@@ -69,16 +72,22 @@ export async function insertUser(db, { nombre, correo, rol = 'Administrador', id
   return row.id_usuario
 }
 
-// Levanta la API (Express) sobre la base de prueba en un puerto libre. Devuelve { url, close }.
+// Levanta la API (Express) sobre la base de prueba en un puerto libre. Devuelve { url, attachmentsDir, close }.
+// Los adjuntos van a una carpeta temporal que se borra al cerrar.
 export async function startServer(db, env = {}) {
-  const config = readConfig({ SESSION_SECRET: 'secreto-de-pruebas', PBKDF2_ITERATIONS: String(ITERATIONS), ...env })
+  const attachmentsDir = await mkdtemp(join(tmpdir(), 'tickops-adjuntos-'))
+  const config = readConfig({ SESSION_SECRET: 'secreto-de-pruebas', PBKDF2_ITERATIONS: String(ITERATIONS), ATTACHMENTS_DIR: attachmentsDir, ...env })
   const app = createApp({ db, config })
   const server = await new Promise((resolve) => {
     const s = app.listen(0, '127.0.0.1', () => resolve(s))
   })
   return {
     url: `http://127.0.0.1:${server.address().port}`,
-    close: () => new Promise((resolve) => server.close(resolve))
+    attachmentsDir,
+    async close() {
+      await new Promise((resolve) => server.close(resolve))
+      await rm(attachmentsDir, { recursive: true, force: true })
+    }
   }
 }
 
@@ -86,19 +95,22 @@ export async function startServer(db, env = {}) {
 export function client(baseUrl) {
   let cookie = ''
   return async function request(method, path, body, headers = {}) {
+    const isForm = body instanceof FormData
     const response = await fetch(baseUrl + path, {
       method,
       headers: {
-        ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+        ...(body !== undefined && !isForm ? { 'content-type': 'application/json' } : {}),
         ...(cookie ? { cookie } : {}),
         ...headers
       },
-      body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body)
+      body: body === undefined || isForm || typeof body === 'string' ? body : JSON.stringify(body)
     })
     const setCookie = response.headers.getSetCookie()[0] || ''
     if (setCookie) cookie = setCookie.split(';')[0]
-    const data = await response.json().catch(() => null)
-    return { status: response.status, data, headers: response.headers, setCookie }
+    const isJson = (response.headers.get('content-type') || '').includes('application/json')
+    const raw = isJson ? null : Buffer.from(await response.arrayBuffer())
+    const data = isJson ? await response.json().catch(() => null) : null
+    return { status: response.status, data, raw, headers: response.headers, setCookie }
   }
 }
 

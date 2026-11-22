@@ -57,8 +57,15 @@ LO QUE YA ESTÁ HECHO
      categoría y rango de fechas (con "Limpiar filtros"); el agente por prioridad y categoría.
    - Panel estadístico: nueva tarjeta "Resueltas" (resueltas o cerradas) junto a abiertas, sin asignar,
      SLA vencido y agentes.
-   - Pruebas automáticas en el proyecto: npm test (node:test). 55 pruebas: 14 de lógica, 37 de la API
-     y 4 del respaldo. Usan una base temporal con solo estructura y catálogos, y la borran al terminar.
+   - Pruebas automáticas en el proyecto: npm test (node:test). Usan una base temporal con solo estructura
+     y catálogos, y la borran al terminar.
+   - Adjuntos (opcional): tabla "adjuntos" + carpeta ATTACHMENTS_DIR (./adjuntos, fuera de git). Subir en la
+     ficha y al registrar una incidencia; miniaturas de imágenes; 5 MB c/u, 5 por envío, 20 por incidencia;
+     se valida extensión y firma del archivo. El respaldo copia los adjuntos cifrados (incremental).
+   - Exportar reportes (opcional): "Exportar Excel" (.xlsx) y "Exportar PDF" en el panel del administrador,
+     con los filtros aplicados. Librerías write-excel-file y jsPDF, cargadas solo al exportar.
+   - Avisos por correo: DESCARTADOS por decisión del equipo (22-nov).
+   - Total de pruebas: 63 (14 de lógica, 37 de API, 4 de respaldo, 8 de adjuntos), todas OK.
 
 CÓMO ARRANCAR
 -------------
@@ -91,7 +98,7 @@ LO QUE FALTA
 - Restablecer contraseña por correo (tabla tokens_restablecimiento).
 - Administrar departamentos desde el panel (hoy solo se ven; las categorías ya se administran).
 - Respaldos: instalar Google Drive para escritorio con la cuenta dedicada y cambiar BACKUP_DIR.
-- Pendientes opcionales de la propuesta inicial: adjuntos, exportar PDF/Excel y avisos por correo.
+- Propuesta inicial: todo lo obligatorio y los opcionales elegidos están hechos (avisos por correo descartados).
 - UsersView.vue e IncidentHistory.vue (merge del compañero) no tienen ruta y usan datos de ejemplo:
   integrarlos o borrarlos.
 - Landing: botón "Solicitar información" usa mailto:contacto@tickops.com (dominio incorrecto).

@@ -260,3 +260,31 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Exportar reportes */
+.export-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--dash-muted);
+  font-size: 12px;
+}
+
+.export-button {
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.export-button:hover:not(:disabled) {
+  border-color: var(--dash-primary);
+  color: var(--dash-primary);
+}
+
+.export-button:disabled {
+  opacity: .6;
+  cursor: wait;
+}

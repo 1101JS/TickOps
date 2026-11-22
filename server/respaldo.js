@@ -2,8 +2,9 @@
 //   npm run respaldo                         crea un respaldo cifrado ahora mismo en BACKUP_DIR
 //   npm run respaldo -- listar               muestra los respaldos guardados
 //   npm run descifrar-respaldo -- <archivo>  descifra un respaldo y explica cómo restaurarlo
+//   npm run respaldo -- restaurar-adjuntos   descifra los adjuntos respaldados que falten en ATTACHMENTS_DIR
 import { basename } from 'node:path'
-import { backupConfig, createBackup, decryptBackup, listBackups, pgTool } from './backup.js'
+import { backupConfig, createBackup, decryptBackup, listBackups, pgTool, restoreAttachments } from './backup.js'
 
 const config = backupConfig()
 const [command, file] = process.argv.slice(2)
@@ -20,6 +21,10 @@ try {
     console.log(`  2. "${restore}" --no-owner -d sistema_incidencias_restaurada "${output}"`)
     console.log('Revisa los datos y, si todo está bien, apunta PGDATABASE del .env a la base restaurada.')
     console.log('Borra el archivo .dump descifrado cuando termines: no está cifrado.')
+  } else if (command === 'restaurar-adjuntos') {
+    if (!config.dir || !config.password) throw new Error('Faltan BACKUP_DIR o BACKUP_PASSWORD en .env.')
+    const restored = await restoreAttachments(config)
+    console.log(`${restored} adjunto(s) restaurado(s) en ${config.attachmentsDir}`)
   } else if (command === 'listar') {
     if (!config.dir) throw new Error('Falta BACKUP_DIR en .env.')
     const items = await listBackups(config.dir)
@@ -28,9 +33,10 @@ try {
   } else if (!command) {
     const result = await createBackup(config)
     console.log(`Respaldo creado: ${result.path} (${Math.ceil(result.bytes / 1024)} KB)`)
+    if (result.attachments) console.log(`Adjuntos nuevos respaldados: ${result.attachments}`)
     if (result.removed.length) console.log(`Borrados por antigüedad: ${result.removed.map((n) => basename(n)).join(', ')}`)
   } else {
-    throw new Error(`Comando desconocido: ${command}. Usa: (nada), listar o descifrar.`)
+    throw new Error(`Comando desconocido: ${command}. Usa: (nada), listar, restaurar-adjuntos o descifrar.`)
   }
 } catch (error) {
   console.error(`Error: ${error.message}`)

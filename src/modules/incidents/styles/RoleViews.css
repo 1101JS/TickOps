@@ -23,3 +23,7 @@
 /* Filtros de la bandeja del agente */
 .queue-filters{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
 @media(max-width:560px){.queue-filters{justify-content:stretch}.queue-filters .filter{flex:1 1 140px}}
+
+/* Adjuntos en el formulario de nueva incidencia */
+.optional-note{color:var(--role-muted);font-weight:400}
+.incident-form input[type=file]{padding:9px 10px;background:var(--role-field);font-size:12px}

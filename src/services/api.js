@@ -23,3 +23,16 @@ export async function api(path, { method = 'GET', body } = {}) {
   if (!response.ok) throw new ApiError(response.status, data.error || `Error ${response.status}`)
   return data
 }
+
+// Envío de archivos (multipart/form-data). El navegador pone el content-type con su "boundary".
+export async function apiUpload(path, formData) {
+  let response
+  try {
+    response = await fetch(`/api${path}`, { method: 'POST', credentials: 'same-origin', body: formData })
+  } catch {
+    throw new ApiError(0, 'No se pudo conectar con el servidor.')
+  }
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) throw new ApiError(response.status, data.error || `Error ${response.status}`)
+  return data
+}

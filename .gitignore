@@ -28,3 +28,6 @@ dist-ssr
 .dev.vars
 .env
 data/
+
+# Adjuntos de incidencias (ATTACHMENTS_DIR)
+adjuntos/

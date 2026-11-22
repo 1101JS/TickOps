@@ -1,4 +1,5 @@
 // Incidencias: consultas, permisos por rol, estados permitidos y forma de la respuesta.
+import { shapeAttachment } from './attachments.js'
 import { HttpError, intId } from './http.js'
 
 const REOPEN_BUSINESS_DAYS = 3
@@ -111,6 +112,7 @@ export function shapeIncident(row, user) {
       gestionar: manager && !row.es_estado_final,
       estados: allowedTargets(user, row),
       comentar: !row.es_estado_final,
+      adjuntar: !row.es_estado_final,
       comentarioInterno: manager && !row.es_estado_final,
       transferir: manager && ['Pendiente', 'En Proceso'].includes(row.estado)
     }
@@ -130,7 +132,7 @@ export async function findIncident(db, user, id, { lock = false } = {}) {
 export async function incidentDetail(db, user, id) {
   const row = await findIncident(db, user, id)
   const manager = canManage(user, row)
-  const [comentarios, historial, transferencias] = await Promise.all([
+  const [comentarios, historial, transferencias, adjuntos] = await Promise.all([
     db.all(
       `SELECT c.id_comentario, c.contenido, c.es_interno, c.es_resolucion, c.fecha_creacion, u.id_usuario, u.nombre, r.nombre AS rol
        FROM comentarios c JOIN usuarios u ON u.id_usuario = c.id_usuario JOIN roles r ON r.id_rol = u.id_rol
@@ -158,6 +160,12 @@ export async function incidentDetail(db, user, id) {
        JOIN usuarios u ON u.id_usuario = t.id_usuario_transfiere
        WHERE t.id_incidencia = $1 ORDER BY t.fecha_transferencia, t.id_transferencia`,
       [id]
+    ),
+    db.all(
+      `SELECT a.id_adjunto, a.nombre_archivo, a.tipo_mime, a.tamano_bytes, a.fecha_subida, a.id_usuario, u.nombre AS autor
+       FROM adjuntos a JOIN usuarios u ON u.id_usuario = a.id_usuario
+       WHERE a.id_incidencia = $1 ORDER BY a.fecha_subida, a.id_adjunto`,
+      [id]
     )
   ])
   return {
@@ -182,6 +190,7 @@ export async function incidentDetail(db, user, id) {
       agenteNuevo: h.agente_nuevo,
       responsable: h.responsable
     })),
+    adjuntos: adjuntos.map(shapeAttachment),
     transferencias: transferencias.map((t) => ({
       id: t.id_transferencia,
       fecha: t.fecha_transferencia,

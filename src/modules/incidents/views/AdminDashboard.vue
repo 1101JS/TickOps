@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import '../styles/AdminDashboard.css'
 import ThemeSwitcher from '../../../components/ThemeSwitcher.vue'
 import { getSession, logout } from '../../../services/AuthService.js'
+import { exportIncidentsToExcel, exportIncidentsToPdf } from '../../../services/ExportService.js'
 import {
   categoriesByDepartment, createCategory, createIncident, createUser, deleteCategory, formatDate, getAgents, getCatalogs,
   getCategories, getIncidents, getUsers, initials, slug, updateCategory, updateUser
@@ -74,6 +75,43 @@ const filteredIncidents = computed(() => {
     return !term || [i.id, i.titulo, i.categoria, i.solicitante, i.agente].join(' ').toLowerCase().includes(term)
   })
 })
+
+// Texto con los filtros aplicados, para el encabezado de los reportes.
+const filterSummary = computed(() => {
+  const parts = []
+  const name = (list, id) => list.find((item) => item.id === Number(id))?.nombre
+  const states = { abiertas: 'Abiertas', vencidas: 'SLA vencido', todas: '' }
+  const state = statusFilter.value in states ? states[statusFilter.value] : statusFilter.value
+  if (state) parts.push(`Estado: ${state}`)
+  if (priorityFilter.value) parts.push(`Prioridad: ${name(catalogs.value.prioridades, priorityFilter.value)}`)
+  if (departmentFilter.value) parts.push(`Departamento: ${name(catalogs.value.departamentos, departmentFilter.value)}`)
+  if (categoryFilter.value) parts.push(`Categoría: ${name(catalogs.value.categorias, categoryFilter.value)}`)
+  if (dateFrom.value) parts.push(`Desde: ${dateFrom.value.split('-').reverse().join('/')}`)
+  if (dateTo.value) parts.push(`Hasta: ${dateTo.value.split('-').reverse().join('/')}`)
+  if (search.value.trim()) parts.push(`Búsqueda: "${search.value.trim()}"`)
+  return parts.join(' · ')
+})
+const exporting = ref('')
+
+async function exportReport(format) {
+  if (exporting.value) return
+  exporting.value = format
+  try {
+    const list = filteredIncidents.value
+    if (format === 'excel') await exportIncidentsToExcel(list, { filters: filterSummary.value })
+    else {
+      const count = (estado) => list.filter((i) => i.estado === estado).length
+      const summary = ['Pendiente', 'En Proceso', 'Resuelto', 'Cerrado', 'Rechazado'].map((e) => `${e}: ${count(e)}`)
+      summary.push(`SLA vencido: ${list.filter((i) => i.sla.resolucionVencida).length}`)
+      await exportIncidentsToPdf(list, { filters: filterSummary.value, summary })
+    }
+    show(`Reporte ${format === 'excel' ? 'Excel' : 'PDF'} generado con ${list.length} incidencia(s).`)
+  } catch (err) {
+    fail(new Error(`No se pudo generar el reporte: ${err.message}`))
+  } finally {
+    exporting.value = ''
+  }
+}
 
 function clearFilters() {
   search.value = ''
@@ -261,7 +299,14 @@ onMounted(loadData)
       </section>
 
       <section id="incidents" class="card incident-management section-anchor">
-        <div class="section-heading management-heading"><div><p class="eyebrow">SEGUIMIENTO</p><h2>Incidencias</h2></div><span>{{ filteredIncidents.length }} de {{ incidents.length }}</span></div>
+        <div class="section-heading management-heading">
+          <div><p class="eyebrow">SEGUIMIENTO</p><h2>Incidencias</h2></div>
+          <div class="export-actions">
+            <span>{{ filteredIncidents.length }} de {{ incidents.length }}</span>
+            <button type="button" class="secondary-button export-button" :disabled="Boolean(exporting)" @click="exportReport('excel')">{{ exporting === 'excel' ? 'Generando…' : 'Exportar Excel' }}</button>
+            <button type="button" class="secondary-button export-button" :disabled="Boolean(exporting)" @click="exportReport('pdf')">{{ exporting === 'pdf' ? 'Generando…' : 'Exportar PDF' }}</button>
+          </div>
+        </div>
         <div class="toolbar">
           <input v-model="search" type="search" placeholder="Buscar por número, título, solicitante o agente" aria-label="Buscar incidencias" />
           <select v-model="statusFilter" aria-label="Filtrar por estado">

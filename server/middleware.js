@@ -43,8 +43,10 @@ export function requireRole(roles) {
 }
 
 // POST/PATCH/PUT deben enviar un objeto JSON (express.json() ya lo convirtió en req.body).
+// Excepción: la subida de adjuntos llega como multipart/form-data y la procesa multer en su router.
 export function requireJsonObject(req, res, next) {
   if (!['POST', 'PATCH', 'PUT'].includes(req.method) || req.path === '/auth/logout') return next()
+  if (req.is('multipart/form-data') && /^\/incidencias\/\d+\/adjuntos$/.test(req.path)) return next()
   if (!req.is('application/json')) throw new HttpError(415, 'Se esperaba un cuerpo JSON.')
   if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) throw new HttpError(400, 'Se esperaba un objeto JSON.')
   next()
@@ -64,6 +66,15 @@ export function errorHandler(error, req, res, next) {
   if (res.headersSent) return next(error)
   if (error.type === 'entity.parse.failed') return res.status(400).json({ error: 'JSON inválido.' })
   if (error.type === 'entity.too.large') return res.status(413).json({ error: 'El contenido enviado es demasiado grande.' })
+  if (error.name === 'MulterError') {
+    const messages = {
+      LIMIT_FILE_SIZE: [413, 'Cada archivo puede pesar hasta 5 MB.'],
+      LIMIT_FILE_COUNT: [400, 'Puedes subir hasta 5 archivos a la vez.'],
+      LIMIT_UNEXPECTED_FILE: [400, 'Envía los archivos en el campo "archivos" (máximo 5 a la vez).']
+    }
+    const [status, message] = messages[error.code] || [400, 'No se pudo procesar el archivo enviado.']
+    return res.status(status).json({ error: message })
+  }
   const known = error instanceof HttpError ? error : fromDbError(error)
   if (known) return res.status(known.status).json({ error: known.message })
   console.error(error)

@@ -6,9 +6,11 @@ import {
   shapeIncident, validAgent, withHistory
 } from '../lib/incidents.js'
 import { ALL, STAFF, numericId, requireRole } from '../middleware.js'
+import attachmentRoutes from './adjuntos.js'
 
 const router = Router()
 router.param('id', numericId)
+router.use('/:id/adjuntos', attachmentRoutes)
 
 router.get('/', requireRole(ALL), async (req, res) => {
   const { db } = req.app.locals

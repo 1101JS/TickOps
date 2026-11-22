@@ -3,7 +3,8 @@
 // Qué botones aparecen lo decide el servidor en "incidencia.acciones"; aquí no se repiten las reglas.
 import { computed, onMounted, ref, watch } from 'vue'
 import {
-  addComment, categoriesByDepartment, formatDateTime, getAgents, getCatalogs, getIncident, slug, transferIncident, updateIncident
+  ATTACHMENT_EXTENSIONS, addComment, attachmentUrl, categoriesByDepartment, checkAttachments, deleteAttachment, formatBytes, formatDateTime,
+  getAgents, getCatalogs, getIncident, slug, transferIncident, updateIncident, uploadAttachments
 } from '../../../services/IncidentService.js'
 
 const props = defineProps({
@@ -28,6 +29,9 @@ const transitionComment = ref('')
 const transitionAgent = ref('')
 const comment = ref({ contenido: '', tipo: 'publico' })
 const transfer = ref({ idCategoria: '', motivo: '' })
+const pendingFiles = ref([])
+const fileInput = ref(null)
+const acceptedTypes = ATTACHMENT_EXTENSIONS.join(',')
 
 const isOwner = computed(() => inc.value?.solicitanteId === props.user.id)
 const manages = computed(() => Boolean(inc.value?.acciones.gestionar))
@@ -146,6 +150,40 @@ async function sendTransfer() {
   }
 }
 
+function pickFiles(event) {
+  pendingFiles.value = [...event.target.files]
+  const problem = checkAttachments(pendingFiles.value)
+  error.value = problem
+  feedbackAt.value = 'files'
+  notice.value = ''
+}
+
+function clearFiles() {
+  pendingFiles.value = []
+  if (fileInput.value) fileInput.value.value = ''
+}
+
+async function sendFiles() {
+  const problem = checkAttachments(pendingFiles.value)
+  if (problem) {
+    error.value = problem
+    feedbackAt.value = 'files'
+    return
+  }
+  const count = pendingFiles.value.length
+  const ok = await run(() => uploadAttachments(inc.value.id, pendingFiles.value), `${count} archivo(s) adjuntado(s).`, 'files')
+  if (ok) clearFiles()
+}
+
+function canDeleteFile(file) {
+  return inc.value.acciones.adjuntar && (props.user.role === 'admin' || file.autorId === props.user.id)
+}
+
+async function removeFile(file) {
+  if (!window.confirm(`¿Eliminar el archivo "${file.nombre}"?`)) return
+  await run(() => deleteAttachment(inc.value.id, file.id), 'Archivo eliminado.', 'files')
+}
+
 watch(() => props.incidentId, load)
 onMounted(load)
 </script>
@@ -187,6 +225,38 @@ onMounted(load)
         <section class="idt-block">
           <h3>Descripción</h3>
           <p class="idt-text">{{ inc.descripcion }}</p>
+        </section>
+
+        <section class="idt-block">
+          <h3>Adjuntos ({{ inc.adjuntos.length }})</h3>
+          <p v-if="!inc.adjuntos.length" class="idt-muted">No hay archivos adjuntos.</p>
+          <ul v-else class="idt-files">
+            <li v-for="file in inc.adjuntos" :key="file.id">
+              <a v-if="file.esImagen" class="idt-thumb" :href="attachmentUrl(inc.id, file.id)" target="_blank" rel="noopener">
+                <img :src="attachmentUrl(inc.id, file.id)" :alt="file.nombre" loading="lazy" />
+              </a>
+              <span v-else class="idt-file-icon" aria-hidden="true">{{ file.nombre.split('.').pop().toUpperCase() }}</span>
+              <div class="idt-file-info">
+                <a :href="attachmentUrl(inc.id, file.id)" target="_blank" rel="noopener">{{ file.nombre }}</a>
+                <small>{{ formatBytes(file.tamano) }} · {{ file.autor }} · {{ formatDateTime(file.fecha) }}</small>
+              </div>
+              <a class="idt-btn" :href="attachmentUrl(inc.id, file.id, true)">Descargar</a>
+              <button v-if="canDeleteFile(file)" class="idt-btn danger" type="button" :disabled="busy" @click="removeFile(file)">Eliminar</button>
+            </li>
+          </ul>
+          <form v-if="inc.acciones.adjuntar" class="idt-form" @submit.prevent="sendFiles">
+            <label>Adjuntar archivos <span class="idt-hint">capturas, PDF o documentos · hasta 5 por vez, 5 MB cada uno</span>
+              <input ref="fileInput" type="file" multiple :accept="acceptedTypes" @change="pickFiles" />
+            </label>
+            <div v-if="pendingFiles.length" class="idt-buttons">
+              <button class="idt-btn primary" type="submit" :disabled="busy">{{ busy ? 'Subiendo…' : `Subir ${pendingFiles.length} archivo(s)` }}</button>
+              <button class="idt-btn" type="button" @click="clearFiles">Cancelar</button>
+            </div>
+          </form>
+          <template v-if="feedbackAt === 'files'">
+            <p v-if="error" class="idt-alert error" role="alert">{{ error }}</p>
+            <p v-if="notice && !error" class="idt-alert ok" role="status">{{ notice }}</p>
+          </template>
         </section>
 
         <section v-if="inc.acciones.estados.length" class="idt-block">
@@ -360,6 +430,18 @@ details summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--idt-pr
 .idt-timeline{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
 .idt-timeline li{padding:9px 12px;border-left:3px solid #93c5fd;background:var(--idt-bg)}
 .idt-timeline span{color:var(--idt-muted);font-size:11px;font-weight:700}.idt-timeline p{margin:4px 0 0;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
-@media(max-width:720px){.idt-page{padding:18px 16px}.idt-grid{grid-template-columns:1fr 1fr}.idt-form-grid{grid-template-columns:1fr}}
+.idt-files{display:flex;flex-direction:column;gap:8px;margin:0 0 4px;padding:0;list-style:none}
+.idt-files li{display:flex;align-items:center;gap:12px;padding:8px 10px;border:1px solid var(--idt-border);border-radius:10px;background:var(--idt-bg)}
+.idt-thumb{flex:0 0 56px;height:56px;overflow:hidden;border-radius:7px;border:1px solid var(--idt-border);background:var(--idt-card)}
+.idt-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.idt-file-icon{display:grid;place-items:center;flex:0 0 56px;height:56px;border-radius:7px;background:var(--idt-card);border:1px solid var(--idt-border);color:var(--idt-primary);font-size:11px;font-weight:800}
+.idt-file-info{flex:1;min-width:0}
+.idt-file-info a{display:block;color:var(--idt-text);font-size:13px;font-weight:700;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.idt-file-info a:hover{color:var(--idt-primary);text-decoration:underline}
+.idt-file-info small{color:var(--idt-muted);font-size:11px}
+a.idt-btn{text-decoration:none}
+.idt-hint{color:var(--idt-muted);font-size:11px;font-weight:400}
+.idt-form input[type=file]{font:inherit;font-size:12px;color:var(--idt-text)}
+@media(max-width:720px){.idt-files li{flex-wrap:wrap}.idt-page{padding:18px 16px}.idt-grid{grid-template-columns:1fr 1fr}.idt-form-grid{grid-template-columns:1fr}}
 @media(max-width:420px){.idt-grid{grid-template-columns:1fr}}
 </style>

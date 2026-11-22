@@ -6,9 +6,10 @@
 // Estructura:
 //   app.js          crea la aplicación y monta middlewares y routers
 //   middleware.js   CSRF, sesión (req.user), roles, validación de JSON y manejo de errores
-//   routes/*.js     un router por recurso: auth, catalogos, incidencias, categorias, usuarios/agentes
+//   routes/*.js     un router por recurso: auth, catalogos, incidencias (+ adjuntos), categorias, usuarios/agentes
 //   lib/*.js        lógica compartida: validación, usuarios/sesión, reglas de incidencias, cifrado
 import express from 'express'
+import { attachmentsDir } from './lib/attachments.js'
 import { errorHandler, loadUser, notFound, requireJsonObject, sameOrigin } from './middleware.js'
 import authRoutes from './routes/auth.js'
 import catalogRoutes from './routes/catalogos.js'
@@ -57,6 +58,7 @@ export function readConfig(env = {}) {
     allowRegistration: String(env.ALLOW_REGISTRATION ?? 'false') === 'true',
     passwordIterations: Number(env.PBKDF2_ITERATIONS || 100000),
     sessionSecret: env.SESSION_SECRET || '',
+    attachmentsDir: attachmentsDir(env),
     trustedOrigins: String(env.TRUSTED_ORIGINS || '').split(',').map((item) => item.trim().replace(/\/+$/, '')).filter(Boolean)
   }
 }
