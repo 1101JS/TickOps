@@ -2,8 +2,8 @@
 import RoleFramework from '../shared/RoleFramework.vue'
 
 const items = [
-  { label: 'Resumen', to: { name: 'AgentDashboard', hash: '#summary' } },
-  { label: 'Bandeja de trabajo', to: { name: 'AgentDashboard', hash: '#queue' } }
+  { label: 'Bandeja de trabajo', to: { name: 'AgentDashboard' } },
+  { label: 'Nueva incidencia', to: { name: 'AgentDashboard', params: { vista: 'nueva' } } }
 ]
 </script>
 

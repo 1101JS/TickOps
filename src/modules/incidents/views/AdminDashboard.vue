@@ -1,14 +1,17 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import '../styles/AdminDashboard.css'
 import ThemeSwitcher from '../../../components/ThemeSwitcher.vue'
 import AdminViewSwitcher from '../../shared/AdminViewSwitcher.vue'
+import AppModal from '../../shared/AppModal.vue'
+import StatusFilterCards from '../../shared/StatusFilterCards.vue'
+import NewIncidentForm from '../components/NewIncidentForm.vue'
 import { getSession, logout } from '../../../services/AuthService.js'
 import { exportIncidentsToExcel, exportIncidentsToPdf } from '../../../services/ExportService.js'
 import {
-  categoriesByDepartment, createCategory, createDepartment, createIncident, createUser, deleteCategory, deleteDepartment, formatDate, getAgents,
-  getCatalogs, getCategories, getDepartments, getIncidents, getUsers, initials, slug, updateCategory, updateDepartment, updateUser
+  createCategory, createDepartment, createUser, deleteCategory, deleteDepartment, categoriesByDepartment, formatDate, getAgents,
+  getCatalogs, getCategories, getDepartments, getIncidents, getUsers, initials, matchesStatus, slug, statusCards, updateCategory, updateDepartment, updateUser
 } from '../../../services/IncidentService.js'
 
 const ROLES = [
@@ -17,6 +20,7 @@ const ROLES = [
   { key: 'applicant', label: 'Solicitante' }
 ]
 
+const route = useRoute()
 const router = useRouter()
 const user = getSession()
 const catalogs = ref({ departamentos: [], categorias: [], prioridades: [], estados: [] })
@@ -25,7 +29,9 @@ const agents = ref([])
 const users = ref([])
 const categories = ref([])
 const departments = ref([])
-const activeSection = ref('panel')
+// Ventana abierta para crear: null | 'incident' | 'department' | 'category' | 'user'
+const modal = ref(null)
+const moreFilters = ref(false)
 const notice = ref('')
 const error = ref('')
 
@@ -37,8 +43,6 @@ const categoryFilter = ref('')
 const dateFrom = ref('')
 const dateTo = ref('')
 
-const emptyIncident = () => ({ titulo: '', descripcion: '', idCategoria: '', idPrioridad: catalogs.value.prioridades.find((p) => p.nombre === 'Media')?.id ?? '' })
-const newIncident = ref(emptyIncident())
 const emptyUser = () => ({ nombre: '', correo: '', password: '', role: 'applicant', idDepartamento: '' })
 const newUser = ref(emptyUser())
 const editingUser = ref(null)
@@ -50,27 +54,31 @@ const newCategory = ref(emptyCategory())
 const editingCategory = ref(null)
 const categoryDepartment = ref('')
 
-const categoryGroups = computed(() => categoriesByDepartment(catalogs.value.categorias))
-const open = computed(() => incidents.value.filter((i) => !i.estadoFinal && i.estado !== 'Resuelto'))
-const unassigned = computed(() => open.value.filter((i) => !i.agenteId))
-const late = computed(() => incidents.value.filter((i) => i.sla.resolucionVencida))
-const solved = computed(() => incidents.value.filter((i) => ['Resuelto', 'Cerrado'].includes(i.estado)))
+const cards = computed(() => statusCards(incidents.value, { unassigned: true, late: true }))
+// Lo que requiere atención ya: abiertas con SLA vencido o sin agente (las más antiguas primero).
+const attention = computed(() =>
+  incidents.value.filter((i) => matchesStatus(i, 'abiertas') && (i.sla.resolucionVencida || !i.agenteId)).reverse().slice(0, 6)
+)
+const activeDepartments = computed(() => departments.value.filter((d) => d.activo))
+const departmentsWithoutAgents = computed(() => activeDepartments.value.filter((d) => !d.agentes))
+const userSearch = ref('')
+const visibleUsers = computed(() => {
+  const term = userSearch.value.trim().toLowerCase()
+  return users.value.filter((u) => !term || [u.nombre, u.correo, u.rol, u.departamento].join(' ').toLowerCase().includes(term))
+})
 // Categorías del filtro: las del departamento elegido (o todas, agrupadas por departamento).
 const filterCategoryGroups = computed(() =>
   categoriesByDepartment(catalogs.value.categorias.filter((c) => !departmentFilter.value || c.departamentoId === Number(departmentFilter.value)))
 )
-const activeFilters = computed(() =>
-  Boolean(search.value || departmentFilter.value || priorityFilter.value || categoryFilter.value || dateFrom.value || dateTo.value || statusFilter.value !== 'abiertas')
-)
+const extraFilters = computed(() => Boolean(departmentFilter.value || categoryFilter.value || dateFrom.value || dateTo.value))
+const activeFilters = computed(() => Boolean(search.value || priorityFilter.value || extraFilters.value || statusFilter.value !== 'abiertas'))
 const filteredIncidents = computed(() => {
   const term = search.value.trim().toLowerCase()
   // Las fechas del filtro son días locales completos: desde las 00:00 del inicio hasta las 23:59 del fin.
   const from = dateFrom.value ? new Date(`${dateFrom.value}T00:00:00`) : null
   const to = dateTo.value ? new Date(`${dateTo.value}T23:59:59.999`) : null
   return incidents.value.filter((i) => {
-    if (statusFilter.value === 'abiertas' && (i.estadoFinal || i.estado === 'Resuelto')) return false
-    if (statusFilter.value === 'vencidas' && !i.sla.resolucionVencida) return false
-    if (!['abiertas', 'vencidas', 'todas'].includes(statusFilter.value) && i.estado !== statusFilter.value) return false
+    if (!matchesStatus(i, statusFilter.value)) return false
     if (departmentFilter.value && i.departamentoId !== Number(departmentFilter.value)) return false
     if (priorityFilter.value && i.prioridadId !== Number(priorityFilter.value)) return false
     if (categoryFilter.value && i.categoriaId !== Number(categoryFilter.value)) return false
@@ -85,7 +93,7 @@ const filteredIncidents = computed(() => {
 const filterSummary = computed(() => {
   const parts = []
   const name = (list, id) => list.find((item) => item.id === Number(id))?.nombre
-  const states = { abiertas: 'Abiertas', vencidas: 'SLA vencido', todas: '' }
+  const states = { abiertas: 'Abiertas', 'sin-asignar': 'Sin asignar', vencidas: 'SLA vencido', todas: '' }
   const state = statusFilter.value in states ? states[statusFilter.value] : statusFilter.value
   if (state) parts.push(`Estado: ${state}`)
   if (priorityFilter.value) parts.push(`Prioridad: ${name(catalogs.value.prioridades, priorityFilter.value)}`)
@@ -153,7 +161,6 @@ async function loadData() {
     users.value = userList
     categories.value = categoryList
     departments.value = departmentList
-    if (!newIncident.value.idPrioridad) newIncident.value = emptyIncident()
   } catch (err) { fail(err) }
 }
 
@@ -161,15 +168,19 @@ async function refreshAgents() {
   agents.value = await getAgents().catch(() => agents.value)
 }
 
-async function submitIncident() {
-  try {
-    const { idCategoria, idPrioridad, ...fields } = newIncident.value
-    const incident = await createIncident({ ...fields, idCategoria: Number(idCategoria), idPrioridad: Number(idPrioridad) })
-    incidents.value.unshift(incident)
-    newIncident.value = emptyIncident()
-    show(`Incidencia #${incident.id} registrada en la cola de ${incident.departamento}.`)
-    goTo('incidents')
-  } catch (err) { fail(err) }
+function openModal(name) {
+  error.value = ''
+  notice.value = ''
+  modal.value = name
+}
+
+function incidentCreated(incident, filesProblem) {
+  incidents.value.unshift(incident)
+  modal.value = null
+  statusFilter.value = 'abiertas'
+  goTo('incidents')
+  show(`Incidencia #${incident.id} registrada en la cola de ${incident.departamento}.`)
+  if (filesProblem) fail(new Error(`La incidencia #${incident.id} se registró, pero los archivos no se pudieron adjuntar: ${filesProblem}`))
 }
 
 function openIncident(id) {
@@ -182,6 +193,7 @@ async function submitUser() {
     const created = await createUser({ ...fields, idDepartamento: idDepartamento ? Number(idDepartamento) : null })
     users.value.push(created)
     newUser.value = emptyUser()
+    modal.value = null
     show(`Usuario ${created.correo} creado como ${created.rol}.`)
     await refreshAgents()
   } catch (err) { fail(err) }
@@ -229,6 +241,7 @@ async function submitCategory() {
     categories.value.push(created)
     categories.value.sort((a, b) => a.departamento.localeCompare(b.departamento) || a.nombre.localeCompare(b.nombre))
     newCategory.value = emptyCategory()
+    modal.value = null
     show(`Categoría "${created.nombre}" creada en ${created.departamento}.`)
     await refreshCatalogs()
   } catch (err) { fail(err) }
@@ -280,6 +293,7 @@ async function submitDepartment() {
   try {
     const created = await createDepartment({ ...newDepartment.value })
     newDepartment.value = emptyDepartment()
+    modal.value = null
     await afterDepartmentChange(`Departamento "${created.nombre}" creado. Agrégale categorías y agentes para que pueda recibir incidencias.`)
   } catch (err) { fail(err) }
 }
@@ -321,39 +335,38 @@ function showDepartmentCategories(department) {
 }
 
 // ---------- Navegación entre módulos ----------
-// La barra de módulos siempre está a la vista (fija a la izquierda; abajo en teléfonos) y marca el módulo
-// en pantalla mientras se hace scroll. Al pulsar un módulo se desplaza hasta él.
-const SECTIONS = ['panel', 'incidents', 'new-incident', 'agents', 'departments', 'categories', 'users']
-let followScrollAfter = 0 // tras un clic, no seguir el scroll hasta que termine el desplazamiento suave
+// Se muestra un módulo a la vez (el de la barra lateral, guardado en el #hash de la dirección), cada uno con su
+// resumen arriba. Así no hay que recorrer toda la página con scroll para llegar a otro módulo.
+const SECTIONS = [
+  { key: 'panel', icon: '⌂', label: 'Panel principal' },
+  { key: 'incidents', icon: '▤', label: 'Incidencias' },
+  { key: 'agents', icon: '♙', label: 'Agentes' },
+  { key: 'departments', icon: '◫', label: 'Departamentos' },
+  { key: 'categories', icon: '▦', label: 'Categorías' },
+  { key: 'users', icon: '⚙', label: 'Usuarios' }
+]
+const activeSection = computed(() => {
+  const key = route.hash.slice(1)
+  return SECTIONS.some((section) => section.key === key) ? key : 'panel'
+})
 
 function goTo(section) {
-  activeSection.value = section
-  followScrollAfter = Date.now() + 1000
-  document.getElementById(section)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  if (activeSection.value !== section) router.push({ hash: `#${section}` })
 }
 
-function sectionInView() {
-  // Al final de la página, el último módulo (aunque sea corto y no llegue arriba).
-  if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) return SECTIONS.at(-1)
-  let current = SECTIONS[0]
-  for (const id of SECTIONS) {
-    const top = document.getElementById(id)?.getBoundingClientRect().top
-    if (top !== undefined && top <= 140) current = id
+// Desde el panel, un recuadro de estado abre Incidencias con ese apartado elegido.
+function showIncidents(status) {
+  statusFilter.value = status
+  goTo('incidents')
+}
+
+// Enlace "#new-incident" (p. ej. desde la ficha de una incidencia): abre el formulario en Incidencias.
+watch(() => route.hash, (hash) => {
+  if (hash === '#new-incident') {
+    router.replace({ hash: '#incidents' })
+    openModal('incident')
   }
-  return current
-}
-
-let scrollFrame = 0
-function onScroll() {
-  if (scrollFrame || Date.now() < followScrollAfter) return
-  scrollFrame = requestAnimationFrame(() => {
-    scrollFrame = 0
-    activeSection.value = sectionInView()
-  })
-}
-// Si la persona mueve la página (rueda, dedo, teclado), se vuelve a seguir el scroll de inmediato.
-const userScrolls = () => { followScrollAfter = 0 }
-const SCROLL_EVENTS = ['wheel', 'touchstart', 'keydown']
+}, { immediate: true })
 
 // En teléfonos la barra de abajo se desliza para que el módulo marcado quede visible.
 watch(activeSection, async () => {
@@ -364,16 +377,7 @@ watch(activeSection, async () => {
 
 async function handleLogout() { await logout(); router.push({ name: 'Landing' }) }
 
-onMounted(() => {
-  loadData()
-  window.addEventListener('scroll', onScroll, { passive: true })
-  for (const name of SCROLL_EVENTS) window.addEventListener(name, userScrolls, { passive: true })
-})
-onBeforeUnmount(() => {
-  window.removeEventListener('scroll', onScroll)
-  for (const name of SCROLL_EVENTS) window.removeEventListener(name, userScrolls)
-  cancelAnimationFrame(scrollFrame)
-})
+onMounted(loadData)
 </script>
 
 <template>
@@ -382,191 +386,260 @@ onBeforeUnmount(() => {
       <div class="sidebar-brand"><span class="brand-mark">T</span><div><h2>TickOps</h2><span>Administración</span></div></div>
       <AdminViewSwitcher />
       <nav class="sidebar-nav" aria-label="Módulos de administración">
-        <button class="nav-item" :class="{ active: activeSection === 'panel' }" @click="goTo('panel')">⌂ Panel principal</button>
-        <button class="nav-item" :class="{ active: activeSection === 'incidents' }" @click="goTo('incidents')">▤ Incidencias</button>
-        <button class="nav-item" :class="{ active: activeSection === 'new-incident' }" @click="goTo('new-incident')">＋ Registrar incidencia</button>
-        <button class="nav-item" :class="{ active: activeSection === 'agents' }" @click="goTo('agents')">♙ Agentes</button>
-        <button class="nav-item" :class="{ active: activeSection === 'departments' }" @click="goTo('departments')">◫ Departamentos</button>
-        <button class="nav-item" :class="{ active: activeSection === 'categories' }" @click="goTo('categories')">▦ Categorías</button>
-        <button class="nav-item" :class="{ active: activeSection === 'users' }" @click="goTo('users')">⚙ Usuarios</button>
+        <button
+          v-for="section in SECTIONS" :key="section.key" type="button" class="nav-item" :class="{ active: activeSection === section.key }"
+          :aria-current="activeSection === section.key ? 'page' : undefined" @click="goTo(section.key)"
+        >{{ section.icon }} {{ section.label }}</button>
       </nav>
       <div class="sidebar-theme"><ThemeSwitcher /></div>
       <button class="logout-button" @click="handleLogout">Cerrar sesión</button>
     </aside>
 
     <section class="dashboard-content">
-      <header id="panel" class="dashboard-header">
-        <div><p class="eyebrow">CENTRO DE CONTROL</p><h1>Panel principal</h1><p>Hola, {{ user?.nombre }}. Supervisa las incidencias de todos los departamentos.</p></div>
-        <button class="primary-button header-action" @click="goTo('new-incident')">+ Nueva incidencia</button>
-      </header>
-      <p v-if="error" class="form-notice error" role="alert">{{ error }}</p>
+      <p v-if="error && !modal" class="form-notice error" role="alert">{{ error }}</p>
       <p v-else-if="notice" class="form-notice" role="status">{{ notice }}</p>
 
-      <section class="stats-grid" aria-label="Resumen de incidencias">
-        <article class="stat-card"><span>Incidencias abiertas</span><strong>{{ open.length }}</strong><small>Pendientes o en proceso</small></article>
-        <article class="stat-card warning"><span>Sin asignar</span><strong>{{ unassigned.length }}</strong><small>Esperando agente</small></article>
-        <article class="stat-card danger"><span>SLA vencido</span><strong>{{ late.length }}</strong><small>Fuera del tiempo de resolución</small></article>
-        <article class="stat-card solved"><span>Resueltas</span><strong>{{ solved.length }}</strong><small>Resueltas o cerradas · {{ incidents.length }} en total</small></article>
-        <article class="stat-card success"><span>Agentes activos</span><strong>{{ agents.length }}</strong><small>{{ users.length }} usuarios en total</small></article>
-      </section>
+      <!-- ---------- Panel principal: resumen de todo, cada dato lleva a su módulo ---------- -->
+      <template v-if="activeSection === 'panel'">
+        <header class="dashboard-header">
+          <div><p class="eyebrow">CENTRO DE CONTROL</p><h1>Panel principal</h1><p>Hola, {{ user?.nombre }}. Elige un apartado para ver esas incidencias.</p></div>
+          <button class="primary-button header-action" @click="openModal('incident')">+ Nueva incidencia</button>
+        </header>
+        <StatusFilterCards :model-value="''" :options="cards" label="Incidencias por apartado" @update:model-value="showIncidents" />
+        <div class="overview-grid">
+          <button type="button" class="overview-card" @click="goTo('agents')">
+            <span>Agentes activos</span><strong>{{ agents.length }}</strong><small>{{ agents.filter((a) => a.carga === 0).length }} disponibles</small>
+          </button>
+          <button type="button" class="overview-card" :class="{ warn: departmentsWithoutAgents.length }" @click="goTo('departments')">
+            <span>Departamentos activos</span><strong>{{ activeDepartments.length }}</strong>
+            <small>{{ departmentsWithoutAgents.length ? `${departmentsWithoutAgents.length} sin agentes` : 'todos con agentes' }}</small>
+          </button>
+          <button type="button" class="overview-card" @click="goTo('categories')">
+            <span>Categorías</span><strong>{{ categories.filter((c) => c.activa).length }}</strong><small>activas de {{ categories.length }}</small>
+          </button>
+          <button type="button" class="overview-card" @click="goTo('users')">
+            <span>Usuarios</span><strong>{{ users.filter((u) => u.activo).length }}</strong><small>activos de {{ users.length }}</small>
+          </button>
+        </div>
+        <section class="card compact-card">
+          <div class="section-heading"><div><p class="eyebrow">REQUIEREN ATENCIÓN</p><h2>SLA vencido o sin agente</h2></div><button class="text-button" @click="showIncidents('abiertas')">Ver todas las abiertas →</button></div>
+          <ul class="attention-list">
+            <li v-for="incident in attention" :key="incident.id" @click="openIncident(incident.id)">
+              <div><strong>#{{ incident.id }} · {{ incident.titulo }}</strong><small>{{ incident.departamento }} · {{ formatDate(incident.fechaCreacion) }}</small></div>
+              <span v-if="incident.sla.resolucionVencida" class="status-pill rechazado">SLA vencido</span>
+              <span v-if="!incident.agenteId" class="status-pill pendiente">Sin agente</span>
+            </li>
+            <li v-if="!attention.length" class="empty-state">Todo al día: no hay incidencias vencidas ni sin agente.</li>
+          </ul>
+        </section>
+      </template>
 
-      <section id="incidents" class="card incident-management section-anchor">
-        <div class="section-heading management-heading">
-          <div><p class="eyebrow">SEGUIMIENTO</p><h2>Incidencias</h2></div>
-          <div class="export-actions">
+      <!-- ---------- Incidencias ---------- -->
+      <template v-else-if="activeSection === 'incidents'">
+        <header class="dashboard-header">
+          <div><p class="eyebrow">SEGUIMIENTO</p><h1>Incidencias</h1><p>Elige un apartado; los filtros finos están en «Más filtros».</p></div>
+          <button class="primary-button header-action" @click="openModal('incident')">+ Nueva incidencia</button>
+        </header>
+        <StatusFilterCards v-model="statusFilter" :options="cards" label="Apartados de incidencias" />
+        <section class="card incident-management">
+          <div class="toolbar">
+            <input v-model="search" type="search" placeholder="Buscar por número, título, solicitante o agente" aria-label="Buscar incidencias" />
+            <select v-model="priorityFilter" aria-label="Filtrar por prioridad"><option value="">Todas las prioridades</option><option v-for="p in catalogs.prioridades" :key="p.id" :value="p.id">{{ p.nombre }}</option></select>
+            <button type="button" class="secondary-button toolbar-button" :aria-expanded="moreFilters || extraFilters" @click="moreFilters = !moreFilters">
+              {{ moreFilters || extraFilters ? 'Menos filtros' : 'Más filtros' }}{{ extraFilters ? ' •' : '' }}
+            </button>
+          </div>
+          <div v-if="moreFilters || extraFilters" class="toolbar filter-row">
+            <select v-model="departmentFilter" aria-label="Filtrar por departamento"><option value="">Todos los departamentos</option><option v-for="d in catalogs.departamentos" :key="d.id" :value="d.id">{{ d.nombre }}</option></select>
+            <select v-model="categoryFilter" aria-label="Filtrar por categoría">
+              <option value="">Todas las categorías</option>
+              <optgroup v-for="g in filterCategoryGroups" :key="g.departamento" :label="g.departamento"><option v-for="c in g.items" :key="c.id" :value="c.id">{{ c.nombre }}</option></optgroup>
+            </select>
+            <label class="date-filter">Desde<input v-model="dateFrom" type="date" :max="dateTo || undefined" aria-label="Registradas desde" /></label>
+            <label class="date-filter">Hasta<input v-model="dateTo" type="date" :min="dateFrom || undefined" aria-label="Registradas hasta" /></label>
+          </div>
+          <div class="list-meta">
             <span>{{ filteredIncidents.length }} de {{ incidents.length }}</span>
-            <button type="button" class="secondary-button export-button" :disabled="Boolean(exporting)" @click="exportReport('excel')">{{ exporting === 'excel' ? 'Generando…' : 'Exportar Excel' }}</button>
-            <button type="button" class="secondary-button export-button" :disabled="Boolean(exporting)" @click="exportReport('pdf')">{{ exporting === 'pdf' ? 'Generando…' : 'Exportar PDF' }}</button>
+            <button v-if="activeFilters" type="button" class="text-button" @click="clearFilters">Limpiar filtros</button>
+            <span class="list-meta-actions">
+              <button type="button" class="text-button" :disabled="Boolean(exporting)" @click="exportReport('excel')">{{ exporting === 'excel' ? 'Generando…' : '⇩ Excel' }}</button>
+              <button type="button" class="text-button" :disabled="Boolean(exporting)" @click="exportReport('pdf')">{{ exporting === 'pdf' ? 'Generando…' : '⇩ PDF' }}</button>
+            </span>
           </div>
-        </div>
-        <div class="toolbar">
-          <input v-model="search" type="search" placeholder="Buscar por número, título, solicitante o agente" aria-label="Buscar incidencias" />
-          <select v-model="statusFilter" aria-label="Filtrar por estado">
-            <option value="abiertas">Abiertas</option><option value="vencidas">SLA vencido</option><option value="todas">Todos los estados</option>
-            <option v-for="e in catalogs.estados" :key="e.id" :value="e.nombre">{{ e.nombre }}</option>
-          </select>
-          <select v-model="priorityFilter" aria-label="Filtrar por prioridad"><option value="">Todas las prioridades</option><option v-for="p in catalogs.prioridades" :key="p.id" :value="p.id">{{ p.nombre }}</option></select>
-        </div>
-        <div class="toolbar filter-row">
-          <select v-model="departmentFilter" aria-label="Filtrar por departamento"><option value="">Todos los departamentos</option><option v-for="d in catalogs.departamentos" :key="d.id" :value="d.id">{{ d.nombre }}</option></select>
-          <select v-model="categoryFilter" aria-label="Filtrar por categoría">
-            <option value="">Todas las categorías</option>
-            <optgroup v-for="g in filterCategoryGroups" :key="g.departamento" :label="g.departamento"><option v-for="c in g.items" :key="c.id" :value="c.id">{{ c.nombre }}</option></optgroup>
-          </select>
-          <label class="date-filter">Desde<input v-model="dateFrom" type="date" :max="dateTo || undefined" aria-label="Registradas desde" /></label>
-          <label class="date-filter">Hasta<input v-model="dateTo" type="date" :min="dateFrom || undefined" aria-label="Registradas hasta" /></label>
-          <button v-if="activeFilters" type="button" class="text-button" @click="clearFilters">Limpiar filtros</button>
-        </div>
-        <div class="incident-table-wrap"><table class="incident-table">
-          <thead><tr><th>Incidencia</th><th>Departamento</th><th>Prioridad</th><th>Estado</th><th>Agente</th><th></th></tr></thead>
-          <tbody>
-            <tr v-for="incident in filteredIncidents" :key="incident.id">
-              <td><strong>#{{ incident.id }} · {{ incident.titulo }}</strong><small>{{ incident.solicitante }} · {{ formatDate(incident.fechaCreacion) }}</small></td>
-              <td><strong>{{ incident.departamento }}</strong><small>{{ incident.categoria }}</small></td>
-              <td><span class="priority" :class="slug(incident.prioridad)">{{ incident.prioridad }}</span></td>
-              <td><span class="status-pill" :class="slug(incident.estado)">{{ incident.estado }}</span><small v-if="incident.sla.resolucionVencida" class="late-text">SLA vencido</small></td>
-              <td>{{ incident.agente || 'Sin asignar' }}</td>
-              <td class="table-actions"><button class="text-button" @click="openIncident(incident.id)">Ver / gestionar</button></td>
-            </tr>
-            <tr v-if="!filteredIncidents.length"><td colspan="6" class="empty-state">{{ incidents.length ? 'No hay incidencias con esos filtros.' : 'Todavía no hay incidencias registradas.' }}</td></tr>
-          </tbody>
-        </table></div>
-      </section>
+          <div class="incident-table-wrap"><table class="incident-table">
+            <thead><tr><th>Incidencia</th><th>Departamento</th><th>Prioridad</th><th>Estado</th><th>Agente</th><th></th></tr></thead>
+            <tbody>
+              <tr v-for="incident in filteredIncidents" :key="incident.id" class="clickable-row" @click="openIncident(incident.id)">
+                <td>
+                  <strong>#{{ incident.id }} · {{ incident.titulo }}</strong>
+                  <small>
+                    {{ incident.solicitante }} · {{ formatDate(incident.fechaCreacion) }}
+                    <span v-if="incident.principalId" class="relation-tag" :title="`Relacionada con la incidencia #${incident.principalId}`">↳ #{{ incident.principalId }}</span>
+                    <span v-if="incident.totalRelacionadas" class="relation-tag" :title="`${incident.totalRelacionadas} incidencia(s) relacionada(s)`">⛓ {{ incident.totalRelacionadas }}</span>
+                  </small>
+                </td>
+                <td><strong>{{ incident.departamento }}</strong><small>{{ incident.categoria }}</small></td>
+                <td><span class="priority" :class="slug(incident.prioridad)">{{ incident.prioridad }}</span></td>
+                <td><span class="status-pill" :class="slug(incident.estado)">{{ incident.estado }}</span><small v-if="incident.sla.resolucionVencida" class="late-text">SLA vencido</small></td>
+                <td>{{ incident.agente || 'Sin asignar' }}</td>
+                <td class="table-actions"><button class="text-button" @click.stop="openIncident(incident.id)">Abrir →</button></td>
+              </tr>
+              <tr v-if="!filteredIncidents.length"><td colspan="6" class="empty-state">{{ incidents.length ? 'No hay incidencias en este apartado con esos filtros.' : 'Todavía no hay incidencias registradas.' }}</td></tr>
+            </tbody>
+          </table></div>
+        </section>
+      </template>
 
-      <section id="new-incident" class="card incident-form section-anchor">
-        <div class="section-heading"><div><p class="eyebrow">REGISTRO</p><h2>Registrar nueva incidencia</h2></div><span class="section-note">Quedará a tu nombre como solicitante.</span></div>
-        <form @submit.prevent="submitIncident"><div class="form-grid">
-          <label>Título<input v-model="newIncident.titulo" maxlength="150" placeholder="Breve descripción del problema" required /></label>
-          <label>Categoría<select v-model="newIncident.idCategoria" required><option value="">Seleccione...</option><optgroup v-for="g in categoryGroups" :key="g.departamento" :label="g.departamento"><option v-for="c in g.items" :key="c.id" :value="c.id">{{ c.nombre }}</option></optgroup></select></label>
-          <label>Prioridad<select v-model="newIncident.idPrioridad" required><option v-for="p in catalogs.prioridades" :key="p.id" :value="p.id">{{ p.nombre }} · resolver en {{ p.slaResolucionHoras }} h</option></select></label>
-          <label class="form-full">Descripción<textarea v-model="newIncident.descripcion" maxlength="5000" placeholder="Describe el problema, ubicación y cualquier detalle relevante..." required /></label>
-        </div><button type="submit" class="primary-button">Registrar incidencia</button></form>
-      </section>
-
-      <section id="agents" class="card technicians-section section-anchor">
-        <div class="section-heading"><div><p class="eyebrow">EQUIPO DE SOPORTE</p><h2>Agentes por departamento</h2></div><span class="section-note">La carga cuenta incidencias pendientes o en proceso.</span></div>
-        <div v-for="d in agentsByDepartment" :key="d.id" class="department-block">
-          <h3>{{ d.nombre }} <small>{{ d.agents.length }} agente(s)</small></h3>
-          <div class="technician-grid">
-            <article v-for="agent in d.agents" :key="agent.id" class="technician-card">
-              <div class="technician-avatar">{{ initials(agent.nombre) }}</div>
-              <div class="technician-info"><h3>{{ agent.nombre }}</h3><small>{{ agent.correo }}</small></div>
-              <span class="workload" :class="{ available: agent.carga === 0 }">{{ agent.carga === 0 ? 'Disponible' : `${agent.carga} abierta${agent.carga > 1 ? 's' : ''}` }}</span>
-            </article>
+      <!-- ---------- Agentes ---------- -->
+      <template v-else-if="activeSection === 'agents'">
+        <header class="dashboard-header">
+          <div><p class="eyebrow">EQUIPO DE SOPORTE</p><h1>Agentes</h1><p>{{ agents.length }} activo(s) · la carga cuenta incidencias pendientes o en proceso.</p></div>
+          <button class="primary-button header-action" @click="newUser = { ...emptyUser(), role: 'agent' }; openModal('user')">+ Nuevo agente</button>
+        </header>
+        <section class="card">
+          <div v-for="d in agentsByDepartment" :key="d.id" class="department-block">
+            <h3>{{ d.nombre }} <small>{{ d.agents.length }} agente(s)</small></h3>
+            <div class="technician-grid">
+              <article v-for="agent in d.agents" :key="agent.id" class="technician-card">
+                <div class="technician-avatar">{{ initials(agent.nombre) }}</div>
+                <div class="technician-info"><h3>{{ agent.nombre }}</h3><small>{{ agent.correo }}</small></div>
+                <span class="workload" :class="{ available: agent.carga === 0 }">{{ agent.carga === 0 ? 'Disponible' : `${agent.carga} abierta${agent.carga > 1 ? 's' : ''}` }}</span>
+              </article>
+            </div>
+            <p v-if="!d.agents.length" class="section-note">Sin agentes: sus incidencias no podrán atenderse.</p>
           </div>
-          <p v-if="!d.agents.length" class="section-note">Sin agentes: sus incidencias no podrán atenderse. Crea uno en Usuarios.</p>
-        </div>
-      </section>
+        </section>
+      </template>
 
-      <section id="departments" class="card section-anchor">
-        <div class="section-heading"><div><p class="eyebrow">ORGANIZACIÓN</p><h2>Departamentos</h2></div><span class="section-note">Cada departamento atiende las incidencias de sus categorías con sus agentes.</span></div>
-        <form class="incident-form user-form" @submit.prevent="submitDepartment"><div class="form-grid">
-          <label>Nombre<input v-model="newDepartment.nombre" maxlength="80" placeholder="Ej. Infraestructura" required /></label>
-          <label class="form-full"><span class="label-text">Descripción <span class="optional">(opcional)</span></span><input v-model="newDepartment.descripcion" maxlength="200" placeholder="Qué atiende este departamento" /></label>
-        </div><button type="submit" class="primary-button">Crear departamento</button></form>
+      <!-- ---------- Departamentos ---------- -->
+      <template v-else-if="activeSection === 'departments'">
+        <header class="dashboard-header">
+          <div><p class="eyebrow">ORGANIZACIÓN</p><h1>Departamentos</h1><p>{{ activeDepartments.length }} activo(s){{ departmentsWithoutAgents.length ? ` · ${departmentsWithoutAgents.length} sin agentes` : '' }} · cada uno atiende las incidencias de sus categorías.</p></div>
+          <button class="primary-button header-action" @click="openModal('department')">+ Nuevo departamento</button>
+        </header>
+        <section class="card">
+          <div class="incident-table-wrap"><table class="incident-table">
+            <thead><tr><th>Departamento</th><th>Categorías</th><th>Agentes</th><th>Incidencias</th><th>Estado</th><th></th></tr></thead>
+            <tbody>
+              <tr v-for="d in departments" :key="d.id" :class="{ inactive: !d.activo }">
+                <td><strong>{{ d.nombre }}</strong><small>{{ d.descripcion || 'Sin descripción' }} · desde {{ formatDate(d.fechaCreacion) }}</small></td>
+                <td><strong>{{ d.categoriasActivas }}</strong><small>{{ d.categorias === d.categoriasActivas ? 'activas' : `activas de ${d.categorias}` }}</small></td>
+                <td><strong :class="{ 'danger-text': d.activo && !d.agentes }">{{ d.agentes }}</strong><small>{{ d.activo && !d.agentes ? 'sin agentes' : 'activos' }}</small></td>
+                <td><strong>{{ d.incidencias }}</strong><small>{{ d.abiertas }} abierta(s)</small></td>
+                <td><span class="status-pill" :class="d.activo ? 'resuelto' : 'cerrado'">{{ d.activo ? 'Activo' : 'Inactivo' }}</span></td>
+                <td class="table-actions">
+                  <button class="text-button" @click="openDepartmentEditor(d)">Editar</button>
+                  <button class="text-button" @click="showDepartmentCategories(d)">Categorías</button>
+                  <RouterLink v-if="d.activo" class="text-button" :to="{ name: 'AgentDashboard', query: { departamento: d.id } }">Ver como agente</RouterLink>
+                  <button class="text-button" @click="toggleDepartment(d)">{{ d.activo ? 'Desactivar' : 'Reactivar' }}</button>
+                  <button v-if="!d.enUso" class="text-button danger-text" @click="removeDepartment(d)">Eliminar</button>
+                </td>
+              </tr>
+              <tr v-if="!departments.length"><td colspan="6" class="empty-state">No hay departamentos registrados.</td></tr>
+            </tbody>
+          </table></div>
+        </section>
+      </template>
 
-        <div class="incident-table-wrap"><table class="incident-table">
-          <thead><tr><th>Departamento</th><th>Categorías</th><th>Agentes</th><th>Incidencias</th><th>Estado</th><th></th></tr></thead>
-          <tbody>
-            <tr v-for="d in departments" :key="d.id" :class="{ inactive: !d.activo }">
-              <td><strong>{{ d.nombre }}</strong><small>{{ d.descripcion || 'Sin descripción' }} · desde {{ formatDate(d.fechaCreacion) }}</small></td>
-              <td><strong>{{ d.categoriasActivas }}</strong><small>{{ d.categorias === d.categoriasActivas ? 'activas' : `activas de ${d.categorias}` }}</small></td>
-              <td><strong :class="{ 'danger-text': d.activo && !d.agentes }">{{ d.agentes }}</strong><small>{{ d.activo && !d.agentes ? 'sin agentes' : 'activos' }}</small></td>
-              <td><strong>{{ d.incidencias }}</strong><small>{{ d.abiertas }} abierta(s)</small></td>
-              <td><span class="status-pill" :class="d.activo ? 'resuelto' : 'cerrado'">{{ d.activo ? 'Activo' : 'Inactivo' }}</span></td>
-              <td class="table-actions">
-                <button class="text-button" @click="openDepartmentEditor(d)">Editar</button>
-                <button class="text-button" @click="showDepartmentCategories(d)">Categorías</button>
-                <RouterLink v-if="d.activo" class="text-button" :to="{ name: 'AgentDashboard', query: { departamento: d.id } }">Ver como agente</RouterLink>
-                <button class="text-button" @click="toggleDepartment(d)">{{ d.activo ? 'Desactivar' : 'Reactivar' }}</button>
-                <button v-if="!d.enUso" class="text-button danger-text" @click="removeDepartment(d)">Eliminar</button>
-              </td>
-            </tr>
-            <tr v-if="!departments.length"><td colspan="6" class="empty-state">No hay departamentos registrados.</td></tr>
-          </tbody>
-        </table></div>
-      </section>
+      <!-- ---------- Categorías ---------- -->
+      <template v-else-if="activeSection === 'categories'">
+        <header class="dashboard-header">
+          <div><p class="eyebrow">CLASIFICACIÓN</p><h1>Categorías</h1><p>{{ categories.filter((c) => c.activa).length }} activa(s) de {{ categories.length }} · la categoría decide qué departamento atiende cada incidencia.</p></div>
+          <button class="primary-button header-action" @click="newCategory = { ...emptyCategory(), idDepartamento: categoryDepartment }; openModal('category')">+ Nueva categoría</button>
+        </header>
+        <section class="card">
+          <div class="toolbar">
+            <select v-model="categoryDepartment" aria-label="Filtrar categorías por departamento"><option value="">Todos los departamentos</option><option v-for="d in catalogs.departamentos" :key="d.id" :value="d.id">{{ d.nombre }}</option></select>
+          </div>
+          <div class="incident-table-wrap"><table class="incident-table">
+            <thead><tr><th>Categoría</th><th>Departamento</th><th>Incidencias</th><th>Estado</th><th></th></tr></thead>
+            <tbody>
+              <tr v-for="c in visibleCategories" :key="c.id" :class="{ inactive: !c.activa }">
+                <td><strong>{{ c.nombre }}</strong><small>{{ c.descripcion || 'Sin descripción' }}</small></td>
+                <td>{{ c.departamento }}</td>
+                <td><strong>{{ c.incidencias }}</strong><small>{{ c.abiertas }} abierta(s)</small></td>
+                <td><span class="status-pill" :class="c.activa ? 'resuelto' : 'cerrado'">{{ c.activa ? 'Activa' : 'Inactiva' }}</span></td>
+                <td class="table-actions">
+                  <button class="text-button" @click="openCategoryEditor(c)">Editar</button>
+                  <button class="text-button" @click="toggleCategory(c)">{{ c.activa ? 'Desactivar' : 'Reactivar' }}</button>
+                  <button v-if="!c.enUso" class="text-button danger-text" @click="removeCategory(c)">Eliminar</button>
+                </td>
+              </tr>
+              <tr v-if="!visibleCategories.length"><td colspan="5" class="empty-state">No hay categorías en este departamento.</td></tr>
+            </tbody>
+          </table></div>
+        </section>
+      </template>
 
-      <section id="categories" class="card section-anchor">
-        <div class="section-heading"><div><p class="eyebrow">CLASIFICACIÓN</p><h2>Categorías</h2></div><span class="section-note">La categoría decide qué departamento atiende cada incidencia.</span></div>
-        <form class="incident-form user-form" @submit.prevent="submitCategory"><div class="form-grid">
-          <label>Nombre<input v-model="newCategory.nombre" maxlength="80" placeholder="Ej. Impresoras" required /></label>
-          <label>Departamento<select v-model="newCategory.idDepartamento" required><option value="">Seleccione...</option><option v-for="d in catalogs.departamentos" :key="d.id" :value="d.id">{{ d.nombre }}</option></select></label>
-          <label class="form-full"><span class="label-text">Descripción <span class="optional">(opcional; ayuda al solicitante a elegir)</span></span><input v-model="newCategory.descripcion" maxlength="200" placeholder="Qué tipo de problemas entran en esta categoría" /></label>
-        </div><button type="submit" class="primary-button">Crear categoría</button></form>
+      <!-- ---------- Usuarios ---------- -->
+      <template v-else-if="activeSection === 'users'">
+        <header class="dashboard-header">
+          <div><p class="eyebrow">ACCESOS</p><h1>Usuarios</h1><p>{{ users.filter((u) => u.activo).length }} activo(s) de {{ users.length }} · {{ ROLES.map((r) => `${users.filter((u) => u.role === r.key).length} ${r.label.toLowerCase()}(es)`).join(' · ') }}</p></div>
+          <button class="primary-button header-action" @click="newUser = emptyUser(); openModal('user')">+ Nuevo usuario</button>
+        </header>
+        <section class="card">
+          <div class="toolbar"><input v-model="userSearch" type="search" placeholder="Buscar por nombre, correo, rol o departamento" aria-label="Buscar usuarios" /></div>
+          <div class="incident-table-wrap"><table class="incident-table">
+            <thead><tr><th>Usuario</th><th>Rol</th><th>Departamento</th><th>Estado</th><th></th></tr></thead>
+            <tbody>
+              <tr v-for="u in visibleUsers" :key="u.id" :class="{ inactive: !u.activo }">
+                <td><strong>{{ u.nombre }}</strong><small>{{ u.correo }}</small></td>
+                <td>{{ u.rol }}</td>
+                <td>{{ u.departamento || '—' }}</td>
+                <td><span class="status-pill" :class="u.activo ? 'resuelto' : 'cerrado'">{{ u.activo ? 'Activo' : 'Inactivo' }}</span></td>
+                <td class="table-actions">
+                  <button class="text-button" @click="openUserEditor(u)">Editar</button>
+                  <button v-if="u.id !== user?.id" class="text-button" @click="toggleActive(u)">{{ u.activo ? 'Desactivar' : 'Reactivar' }}</button>
+                </td>
+              </tr>
+              <tr v-if="!visibleUsers.length"><td colspan="5" class="empty-state">No hay usuarios con esa búsqueda.</td></tr>
+            </tbody>
+          </table></div>
+        </section>
+      </template>
+    </section>
 
-        <div class="toolbar">
-          <select v-model="categoryDepartment" aria-label="Filtrar categorías por departamento"><option value="">Todos los departamentos</option><option v-for="d in catalogs.departamentos" :key="d.id" :value="d.id">{{ d.nombre }}</option></select>
-        </div>
-        <div class="incident-table-wrap"><table class="incident-table">
-          <thead><tr><th>Categoría</th><th>Departamento</th><th>Incidencias</th><th>Estado</th><th></th></tr></thead>
-          <tbody>
-            <tr v-for="c in visibleCategories" :key="c.id" :class="{ inactive: !c.activa }">
-              <td><strong>{{ c.nombre }}</strong><small>{{ c.descripcion || 'Sin descripción' }}</small></td>
-              <td>{{ c.departamento }}</td>
-              <td><strong>{{ c.incidencias }}</strong><small>{{ c.abiertas }} abierta(s)</small></td>
-              <td><span class="status-pill" :class="c.activa ? 'resuelto' : 'cerrado'">{{ c.activa ? 'Activa' : 'Inactiva' }}</span></td>
-              <td class="table-actions">
-                <button class="text-button" @click="openCategoryEditor(c)">Editar</button>
-                <button class="text-button" @click="toggleCategory(c)">{{ c.activa ? 'Desactivar' : 'Reactivar' }}</button>
-                <button v-if="!c.enUso" class="text-button danger-text" @click="removeCategory(c)">Eliminar</button>
-              </td>
-            </tr>
-            <tr v-if="!visibleCategories.length"><td colspan="5" class="empty-state">No hay categorías en este departamento.</td></tr>
-          </tbody>
-        </table></div>
-      </section>
+    <!-- ---------- Ventanas para crear ---------- -->
+    <AppModal v-if="modal === 'incident'" title="Registrar incidencia" kicker="NUEVA INCIDENCIA · A TU NOMBRE" @close="modal = null">
+      <NewIncidentForm cancelable @created="incidentCreated" @cancel="modal = null" />
+    </AppModal>
 
-      <section id="users" class="card section-anchor">
-        <div class="section-heading"><div><p class="eyebrow">ACCESOS</p><h2>Usuarios</h2></div><span class="section-note">{{ users.length }} cuenta(s)</span></div>
-        <form class="incident-form user-form" @submit.prevent="submitUser"><div class="form-grid">
+    <AppModal v-if="modal === 'department'" title="Nuevo departamento" kicker="ORGANIZACIÓN" @close="modal = null">
+      <form class="incident-form modal-form" @submit.prevent="submitDepartment">
+        <label>Nombre<input v-model="newDepartment.nombre" maxlength="80" placeholder="Ej. Infraestructura" required /></label>
+        <label><span class="label-text">Descripción <span class="optional">(opcional)</span></span><input v-model="newDepartment.descripcion" maxlength="200" placeholder="Qué atiende este departamento" /></label>
+        <p v-if="error" class="form-notice error" role="alert">{{ error }}</p>
+        <footer class="details-footer"><button type="button" class="details-done secondary-button" @click="modal = null">Cancelar</button><button type="submit" class="details-done">Crear departamento</button></footer>
+      </form>
+    </AppModal>
+
+    <AppModal v-if="modal === 'category'" title="Nueva categoría" kicker="CLASIFICACIÓN" @close="modal = null">
+      <form class="incident-form modal-form" @submit.prevent="submitCategory">
+        <label>Nombre<input v-model="newCategory.nombre" maxlength="80" placeholder="Ej. Impresoras" required /></label>
+        <label>Departamento<select v-model="newCategory.idDepartamento" required><option value="">Seleccione...</option><option v-for="d in catalogs.departamentos" :key="d.id" :value="d.id">{{ d.nombre }}</option></select></label>
+        <label><span class="label-text">Descripción <span class="optional">(opcional; ayuda al solicitante a elegir)</span></span><input v-model="newCategory.descripcion" maxlength="200" placeholder="Qué tipo de problemas entran en esta categoría" /></label>
+        <p v-if="error" class="form-notice error" role="alert">{{ error }}</p>
+        <footer class="details-footer"><button type="button" class="details-done secondary-button" @click="modal = null">Cancelar</button><button type="submit" class="details-done">Crear categoría</button></footer>
+      </form>
+    </AppModal>
+
+    <AppModal v-if="modal === 'user'" :title="newUser.role === 'agent' ? 'Nuevo agente' : 'Nuevo usuario'" kicker="ACCESOS" @close="modal = null">
+      <form class="incident-form modal-form" @submit.prevent="submitUser">
+        <div class="form-grid compact">
           <label>Nombre completo<input v-model="newUser.nombre" maxlength="100" required /></label>
           <label>Correo<input v-model="newUser.correo" type="email" maxlength="120" autocomplete="off" required /></label>
           <label>Contraseña inicial<input v-model="newUser.password" type="password" minlength="8" autocomplete="new-password" required /></label>
           <label>Rol<select v-model="newUser.role"><option v-for="r in ROLES" :key="r.key" :value="r.key">{{ r.label }}</option></select></label>
-          <label><span class="label-text">Departamento <span v-if="newUser.role !== 'agent'" class="optional">(opcional)</span></span>
+          <label class="form-full"><span class="label-text">Departamento <span v-if="newUser.role !== 'agent'" class="optional">(opcional)</span></span>
             <select v-model="newUser.idDepartamento" :required="newUser.role === 'agent'"><option value="">Ninguno</option><option v-for="d in catalogs.departamentos" :key="d.id" :value="d.id">{{ d.nombre }}</option></select>
           </label>
-        </div><button type="submit" class="primary-button">Crear usuario</button></form>
+        </div>
+        <p v-if="error" class="form-notice error" role="alert">{{ error }}</p>
+        <footer class="details-footer"><button type="button" class="details-done secondary-button" @click="modal = null">Cancelar</button><button type="submit" class="details-done">Crear {{ newUser.role === 'agent' ? 'agente' : 'usuario' }}</button></footer>
+      </form>
+    </AppModal>
 
-        <div class="incident-table-wrap"><table class="incident-table">
-          <thead><tr><th>Usuario</th><th>Rol</th><th>Departamento</th><th>Estado</th><th></th></tr></thead>
-          <tbody>
-            <tr v-for="u in users" :key="u.id" :class="{ inactive: !u.activo }">
-              <td><strong>{{ u.nombre }}</strong><small>{{ u.correo }}</small></td>
-              <td>{{ u.rol }}</td>
-              <td>{{ u.departamento || '—' }}</td>
-              <td><span class="status-pill" :class="u.activo ? 'resuelto' : 'cerrado'">{{ u.activo ? 'Activo' : 'Inactivo' }}</span></td>
-              <td class="table-actions">
-                <button class="text-button" @click="openUserEditor(u)">Editar</button>
-                <button v-if="u.id !== user?.id" class="text-button" @click="toggleActive(u)">{{ u.activo ? 'Desactivar' : 'Reactivar' }}</button>
-              </td>
-            </tr>
-          </tbody>
-        </table></div>
-      </section>
-    </section>
-
+    <!-- ---------- Ventanas para editar ---------- -->
     <div v-if="editingDepartment" class="details-backdrop" @click.self="editingDepartment = null">
       <section class="details-panel" role="dialog" aria-modal="true" aria-label="Editar departamento">
         <header class="details-header"><div><span class="details-kicker">DEPARTAMENTO</span><h2>Editar {{ editingDepartment.nombre }}</h2></div><button class="details-close" @click="editingDepartment = null">×</button></header>

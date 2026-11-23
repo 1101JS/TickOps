@@ -6,18 +6,19 @@ import ApplicantDashboard from '../modules/incidents/views/ApplicantDashboard.vu
 import IncidentPage from '../modules/incidents/views/IncidentPage.vue'
 import LoginView from '../modules/auth/LoginView.vue'
 import LandingView from '../modules/landing/views/LandingView.vue'
-import PlansView from '../modules/landing/views/PlansView.vue'
 import { getSession, isAuthenticated, loadSession, routeForRole } from '../services/AuthService.js'
 import { getCatalogs } from '../services/IncidentService.js'
 import { clearView, currentView, setView } from '../services/ViewService.js'
 
 const routes = [
   { path: '/', name: 'Landing', component: LandingView },
-  { path: '/planes', name: 'Plans', component: PlansView },
+  // La sección de planes y compras está deshabilitada por ahora (src/modules/landing/views/PlansView.vue se conserva).
+  // Para reactivarla: importar PlansView y volver a poner { path: '/planes', name: 'Plans', component: PlansView }.
+  { path: '/planes', redirect: '/' },
   { path: '/login', name: 'Login', component: LoginView },
   { path: '/registro', name: 'Register', component: LoginView },
   { path: '/incidencias', name: 'AdminDashboard', component: AdminDashboard, meta: { requiresAuth: true, roles: ['admin'] } },
-  { path: '/agente', name: 'AgentDashboard', component: AgentDashboard, meta: { requiresAuth: true, roles: ['agent', 'admin'] } },
+  { path: '/agente/:vista(nueva)?', name: 'AgentDashboard', component: AgentDashboard, meta: { requiresAuth: true, roles: ['agent', 'admin'] } },
   // Un solo registro para las dos vistas del solicitante (lista y /nueva) para que el componente no se vuelva a montar al cambiar.
   { path: '/mis-incidencias/:vista(nueva)?', name: 'ApplicantDashboard', component: ApplicantDashboard, meta: { requiresAuth: true, roles: ['applicant', 'admin'] } },
   { path: '/incidencia/:id(\\d+)', name: 'IncidentDetail', component: IncidentPage, props: (route) => ({ incidentId: Number(route.params.id) }), meta: { requiresAuth: true, roles: ['admin', 'agent', 'applicant'] } },
@@ -27,9 +28,11 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
-  // Los enlaces del menú lateral usan #seccion: se desplaza hasta ella; al cambiar de página, arriba.
+  // El panel de administración muestra un módulo a la vez (#modulo): al cambiar de módulo, arriba.
+  // En otras páginas, un #hash desplaza hasta esa sección.
   scrollBehavior(to, from, savedPosition) {
     if (savedPosition) return savedPosition
+    if (to.name === 'AdminDashboard') return { top: 0 }
     if (to.hash) return { el: to.hash, behavior: 'smooth', top: 16 }
     return { top: 0 }
   }
@@ -73,7 +76,7 @@ async function enterAgentView(to) {
     return { name: 'AdminDashboard' }
   }
   setView({ role: 'agent', departamentoId: department.id, departamento: department.nombre })
-  if (Number(to.query.departamento) !== department.id) return { name: to.name, hash: to.hash, query: { ...to.query, departamento: String(department.id) } }
+  if (Number(to.query.departamento) !== department.id) return { name: to.name, params: to.params, hash: to.hash, query: { ...to.query, departamento: String(department.id) } }
 }
 
 export default router

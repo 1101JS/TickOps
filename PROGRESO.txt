@@ -152,6 +152,23 @@ LO QUE YA ESTÁ HECHO
    - Panel admin: el módulo marcado sigue el scroll (antes solo cambiaba al hacer clic).
    - Corregido: en teléfono las filas de incidencias del agente/solicitante se comprimían palabra por palabra.
    - Navegador (servidor local, solo lectura): 16 comprobaciones OK. Se mantuvo la página única con scroll.
+18. Relación de incidencias - backend (22-nov):
+   - Primera migración: db/migraciones/0001_relaciones_incidencias.sql (tabla relaciones_incidencias + trigger
+     de un solo nivel). La base real necesita "npm run actualizar" (o "npm run migrar") y reiniciar TickOps.
+   - API: PUT/DELETE /api/incidencias/:id/relacion y POST /api/incidencias/:id/relacionadas/resolver.
+   - Pruebas: test/relaciones.test.js (8).
+
+19. Rediseño de la experiencia (22-nov):
+   - Compras deshabilitadas por ahora: /planes redirige a la portada (PlansView.vue se conserva para reactivarla).
+   - Recuadros de estado seleccionables con color (Abiertas, Sin asignar, Pendiente, En Proceso, Resuelto,
+     Cerrado, Rechazado, SLA vencido, Todas) en los tres portales: filtran la lista (shared/StatusFilterCards.vue).
+   - Panel de administración por módulos (uno a la vez, #modulo en la dirección) con resumen arriba; los
+     formularios de alta (incidencia, departamento, categoría, usuario) se abren con botones en una ventana.
+   - Ficha de incidencia: cuadro de resumen fijo con acciones + pestañas (Comentarios, Adjuntos, Relacionadas,
+     Historial); comentar, adjuntar, editar, transferir y relacionar se abren con botones (shared/AppModal.vue).
+   - Relacionar incidencias desde la ficha (duplicada / causa raíz) y "Verificar y cerrar relacionadas" en un clic.
+   - El agente (y el admin en su vista de agente) también puede registrar incidencias: /agente/nueva.
+     Formulario compartido: incidents/components/NewIncidentForm.vue.
 
 CÓMO ARRANCAR
 -------------

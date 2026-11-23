@@ -7,10 +7,12 @@ import {
 } from '../lib/incidents.js'
 import { ALL, STAFF, numericId, requireRole } from '../middleware.js'
 import attachmentRoutes from './adjuntos.js'
+import relationRoutes from './relaciones.js'
 
 const router = Router()
 router.param('id', numericId)
 router.use('/:id/adjuntos', attachmentRoutes)
+router.use('/:id', relationRoutes) // /:id/relacion y /:id/relacionadas/resolver
 
 router.get('/', requireRole(ALL), async (req, res) => {
   const { db } = req.app.locals

@@ -79,6 +79,27 @@ export async function transferIncident(id, { idCategoria, motivo }) {
   return (await api(`/incidencias/${id}/transferencias`, { method: 'POST', body: { idCategoria, motivo } })).incidencia
 }
 
+// ---------- Incidencias relacionadas ----------
+// tipo: 'duplicada' (reporta lo mismo que la principal) | 'causa_raiz' (es un síntoma del problema de la principal).
+export const RELATION_TYPES = {
+  duplicada: { label: 'Duplicada', child: 'Duplicada de', verb: 'es un duplicado de' },
+  causa_raiz: { label: 'Causa raíz', child: 'Causada por', verb: 'es causada por el problema de' }
+}
+
+// Relaciona "id" con la incidencia principal. Devuelve la incidencia "id" actualizada.
+export async function relateIncident(id, { idPrincipal, tipo }) {
+  return (await api(`/incidencias/${id}/relacion`, { method: 'PUT', body: { idPrincipal, tipo } })).incidencia
+}
+
+export async function unrelateIncident(id) {
+  return (await api(`/incidencias/${id}/relacion`, { method: 'DELETE' })).incidencia
+}
+
+// Resuelve o cierra de una vez las relacionadas elegidas de una principal ya resuelta. Devuelve { incidencia, actualizadas }.
+export async function resolveRelated(principalId, { ids, estado, comentario }) {
+  return api(`/incidencias/${principalId}/relacionadas/resolver`, { method: 'POST', body: { ids, estado, comentario } })
+}
+
 // Reemplaza (o agrega) una incidencia dentro de una lista reactiva. Si "incident" es null, la quita.
 export function replaceIncident(list, incident, id = incident?.id) {
   const index = list.findIndex((item) => item.id === id)
@@ -182,4 +203,29 @@ export function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+// ---------- Apartados por estado (recuadros seleccionables) ----------
+
+export const STATES = ['Pendiente', 'En Proceso', 'Resuelto', 'Cerrado', 'Rechazado']
+const isOpenIncident = (i) => !i.estadoFinal && i.estado !== 'Resuelto'
+
+// key: 'abiertas' | 'sin-asignar' | 'vencidas' | 'todas' | nombre de un estado.
+export function matchesStatus(incident, key) {
+  if (key === 'todas') return true
+  if (key === 'abiertas') return isOpenIncident(incident)
+  if (key === 'sin-asignar') return isOpenIncident(incident) && !incident.agenteId
+  if (key === 'vencidas') return Boolean(incident.sla?.resolucionVencida)
+  return incident.estado === key
+}
+
+// Recuadros para <StatusFilterCards>: "Abiertas", uno por estado y, si se piden, "Sin asignar", "SLA vencido" y "Todas".
+export function statusCards(list, { unassigned = false, late = false, all = true } = {}) {
+  const count = (key) => list.filter((i) => matchesStatus(i, key)).length
+  const cards = [{ key: 'abiertas', label: 'Abiertas', tone: 'open', count: count('abiertas') }]
+  if (unassigned) cards.push({ key: 'sin-asignar', label: 'Sin asignar', tone: 'unassigned', count: count('sin-asignar') })
+  for (const estado of STATES) cards.push({ key: estado, label: estado, tone: slug(estado), count: count(estado) })
+  if (late) cards.push({ key: 'vencidas', label: 'SLA vencido', tone: 'late', count: count('vencidas') })
+  if (all) cards.push({ key: 'todas', label: 'Todas', tone: 'all', count: list.length })
+  return cards
 }

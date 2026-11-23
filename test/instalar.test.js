@@ -47,13 +47,13 @@ describe('Instalación de la base de datos', () => {
     const name = tempName('plantilla')
     const result = await installDatabase({ database: name, template: true })
     assert.equal(result.created, true)
-    assert.equal(result.tablas, 14) // 13 del sistema + esquema_migraciones
+    assert.equal(result.tablas, 15) // 13 de la base + relaciones_incidencias (migración 0001) + esquema_migraciones
     const counts = await query(name, `
       SELECT (SELECT COUNT(*) FROM roles) AS roles, (SELECT COUNT(*) FROM estados_incidencia) AS estados,
              (SELECT COUNT(*) FROM prioridades) AS prioridades, (SELECT COUNT(*) FROM departamentos) AS departamentos,
              (SELECT COUNT(*) FROM categorias) AS categorias, (SELECT COUNT(*) FROM usuarios) AS usuarios,
              (SELECT COUNT(*) FROM pg_trigger WHERE NOT tgisinternal) AS triggers`)
-    assert.deepEqual(counts, { roles: 3, estados: 5, prioridades: 4, departamentos: 4, categorias: 7, usuarios: 0, triggers: 4 })
+    assert.deepEqual(counts, { roles: 3, estados: 5, prioridades: 4, departamentos: 4, categorias: 7, usuarios: 0, triggers: 5 })
   })
 
   test('sin plantilla no trae departamentos ni categorías', async () => {

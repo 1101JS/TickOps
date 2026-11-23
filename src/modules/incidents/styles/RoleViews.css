@@ -31,3 +31,14 @@
 /* Teléfono: el título de cada incidencia ocupa su propia línea; etiquetas y botones debajo (antes se comprimía
    palabra por palabra y las etiquetas se montaban sobre el texto). */
 @media(max-width:560px){.ticket-row{flex-wrap:wrap;gap:8px 10px}.ticket-row .ticket-main{flex:1 1 100%}}
+
+/* Encabezado compacto con acción principal, filas que se abren al pulsarlas y etiquetas de incidencias relacionadas */
+.compact-header{align-items:center;margin-bottom:18px}
+.compact-header>.primary{white-space:nowrap}
+.section-title h2 .count{margin-left:6px;padding:2px 8px;border-radius:999px;background:var(--role-primary-soft);color:var(--role-primary);font-size:12px;vertical-align:middle}
+.ticket-row.clickable{cursor:pointer;margin:0 -10px;padding-left:10px;padding-right:10px;border-radius:8px}
+.ticket-row.clickable:hover{background:var(--role-field)}
+.pill.linked{background:#ede9fe;color:#6d28d9}
+.pill.root{background:#f3e8ff;color:#7e22ce}
+.scope-tabs{margin-bottom:14px}
+@media(max-width:560px){.compact-header>.primary{width:100%;text-align:center}}

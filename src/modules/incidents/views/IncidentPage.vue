@@ -21,7 +21,7 @@ const framework = computed(() => ({ admin: AdminFramework, agent: AgentFramework
 const back = computed(() => ({
   name: routeForRole(user?.role),
   query: currentView.value?.role === 'agent' ? { departamento: String(currentView.value.departamentoId) } : {},
-  hash: { admin: '#incidents', agent: '#queue' }[user?.role] || ''
+  hash: user?.role === 'admin' ? '#incidents' : ''
 }))
 const backLabel = computed(() => ({ admin: 'Volver a incidencias', agent: 'Volver a la bandeja' }[user?.role] || 'Volver a mis solicitudes'))
 

@@ -33,14 +33,17 @@ export const INCIDENT_SELECT = `
          i.id_prioridad, p.nombre AS prioridad, p.sla_primera_respuesta_horas, p.sla_resolucion_horas,
          i.id_estado, e.nombre AS estado, e.es_estado_final,
          i.id_solicitante, s.nombre AS solicitante, i.id_agente, a.nombre AS agente,
-         i.fecha_creacion, i.fecha_actualizacion, i.fecha_primera_respuesta, i.fecha_resolucion, i.fecha_cierre
+         i.fecha_creacion, i.fecha_actualizacion, i.fecha_primera_respuesta, i.fecha_resolucion, i.fecha_cierre,
+         ri.id_principal, ri.tipo AS tipo_relacion,
+         (SELECT COUNT(*)::int FROM relaciones_incidencias rh WHERE rh.id_principal = i.id_incidencia) AS total_relacionadas
   FROM incidencias i
   JOIN categorias c ON c.id_categoria = i.id_categoria
   JOIN departamentos d ON d.id_departamento = c.id_departamento
   JOIN prioridades p ON p.id_prioridad = i.id_prioridad
   JOIN estados_incidencia e ON e.id_estado = i.id_estado
   JOIN usuarios s ON s.id_usuario = i.id_solicitante
-  LEFT JOIN usuarios a ON a.id_usuario = i.id_agente`
+  LEFT JOIN usuarios a ON a.id_usuario = i.id_agente
+  LEFT JOIN relaciones_incidencias ri ON ri.id_relacionada = i.id_incidencia`
 
 // Qué incidencias puede ver cada rol. "next" es el número del siguiente parámetro ($n).
 export function incidentScope(user, next) {
@@ -99,6 +102,9 @@ export function shapeIncident(row, user) {
     fechaPrimeraRespuesta: row.fecha_primera_respuesta,
     fechaResolucion: row.fecha_resolucion,
     fechaCierre: row.fecha_cierre,
+    principalId: row.id_principal ?? null,
+    tipoRelacion: row.tipo_relacion ?? null,
+    totalRelacionadas: row.total_relacionadas ?? 0,
     sla: {
       primeraRespuestaHoras: row.sla_primera_respuesta_horas,
       resolucionHoras: row.sla_resolucion_horas,
@@ -114,7 +120,8 @@ export function shapeIncident(row, user) {
       comentar: !row.es_estado_final,
       adjuntar: !row.es_estado_final,
       comentarioInterno: manager && !row.es_estado_final,
-      transferir: manager && ['Pendiente', 'En Proceso'].includes(row.estado)
+      transferir: manager && ['Pendiente', 'En Proceso'].includes(row.estado),
+      relacionar: manager && !row.es_estado_final
     }
   }
 }
@@ -132,7 +139,7 @@ export async function findIncident(db, user, id, { lock = false } = {}) {
 export async function incidentDetail(db, user, id) {
   const row = await findIncident(db, user, id)
   const manager = canManage(user, row)
-  const [comentarios, historial, transferencias, adjuntos] = await Promise.all([
+  const [comentarios, historial, transferencias, adjuntos, relation] = await Promise.all([
     db.all(
       `SELECT c.id_comentario, c.contenido, c.es_interno, c.es_resolucion, c.fecha_creacion, u.id_usuario, u.nombre, r.nombre AS rol
        FROM comentarios c JOIN usuarios u ON u.id_usuario = c.id_usuario JOIN roles r ON r.id_rol = u.id_rol
@@ -166,10 +173,15 @@ export async function incidentDetail(db, user, id) {
        FROM adjuntos a JOIN usuarios u ON u.id_usuario = a.id_usuario
        WHERE a.id_incidencia = $1 ORDER BY a.fecha_subida, a.id_adjunto`,
       [id]
-    )
+    ),
+    relationDetail(db, user, row)
   ])
+  const shaped = shapeIncident(row, user)
   return {
-    ...shapeIncident(row, user),
+    ...shaped,
+    acciones: { ...shaped.acciones, resolverRelacionadas: relation.resolverRelacionadas },
+    principal: relation.principal,
+    relacionadas: relation.relacionadas,
     comentarios: comentarios.map((c) => ({
       id: c.id_comentario,
       contenido: c.contenido,
@@ -255,4 +267,53 @@ export async function validAgent(db, agentId, departmentId) {
   )
   if (!agent) throw new HttpError(400, 'El agente indicado no existe, está inactivo o no pertenece al departamento de la incidencia.')
   return agent
+}
+
+// ---------- Relaciones entre incidencias ----------
+// Una incidencia "relacionada" apunta a una "principal": duplicada (se reportó lo mismo) o causa_raiz
+// (la provoca el problema de la principal). Un solo nivel. Quien no puede ver la otra incidencia solo
+// recibe su número y estado (sin título).
+export const RELATION_TYPES = { duplicada: 'duplicada', causa_raiz: 'por causa raíz' }
+
+function shapeRelated(other, user, scopeIds, tipo) {
+  const visible = scopeIds.has(other.id_incidencia)
+  return {
+    id: other.id_incidencia,
+    tipo,
+    titulo: visible ? other.titulo : null,
+    estado: other.estado,
+    estadoFinal: other.es_estado_final,
+    departamento: other.departamento,
+    agente: visible ? other.agente : null,
+    visible,
+    gestionable: visible && canManage(user, other) && !other.es_estado_final
+  }
+}
+
+// Ids (de la lista dada) que el usuario puede ver según su rol.
+async function visibleIds(db, user, ids) {
+  if (!ids.length) return new Set()
+  const scope = incidentScope(user, 2)
+  const rows = await db.all(`SELECT i.id_incidencia FROM incidencias i JOIN categorias c ON c.id_categoria = i.id_categoria
+    WHERE i.id_incidencia = ANY($1::int[]) AND ${scope.sql}`, [ids, ...scope.params])
+  return new Set(rows.map((r) => r.id_incidencia))
+}
+
+async function relationDetail(db, user, row) {
+  const principalRow = row.id_principal ? await db.first(`${INCIDENT_SELECT} WHERE i.id_incidencia = $1`, [row.id_principal]) : null
+  const children = await db.all(`${INCIDENT_SELECT} WHERE ri.id_principal = $1 ORDER BY i.id_incidencia`, [row.id_incidencia])
+  const scopeIds = await visibleIds(db, user, [...(principalRow ? [principalRow.id_incidencia] : []), ...children.map((c) => c.id_incidencia)])
+  let principal = null
+  if (principalRow) {
+    const shaped = shapeRelated(principalRow, user, scopeIds, row.tipo_relacion)
+    delete shaped.departamento
+    delete shaped.agente
+    principal = shaped
+  }
+  const relacionadas = children.map((c) => shapeRelated(c, user, scopeIds, c.tipo_relacion))
+  return {
+    principal,
+    relacionadas,
+    resolverRelacionadas: ['Resuelto', 'Cerrado'].includes(row.estado) && relacionadas.some((c) => c.gestionable)
+  }
 }

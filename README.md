@@ -140,6 +140,8 @@ Usa el ejecutor de pruebas integrado de Node (`node:test`), sin dependencias ext
 - `test/departamentos.test.js`: administración de departamentos y sus reglas.
 - `test/instalar.test.js`: instalación desde `db/` (base nueva, plantilla opcional, `.env` generado, protección de
   bases existentes y el comando `npm run instalar` completo).
+- `test/relaciones.test.js`: incidencias relacionadas (duplicadas y por causa raíz), permisos, un solo nivel y
+  resolución o cierre en bloque.
 - `test/migraciones.test.js`: orden, registro, reversión de una migración que falla, archivos editados, base más
   nueva que el código y `npm run actualizar`.
 
@@ -215,5 +217,7 @@ Las reglas de los triggers de la base se respetan y sus mensajes llegan al usuar
 | PATCH | /api/incidencias/:id | según rol: `idPrioridad`, `idCategoria`, `idAgente`, `estado`, `comentario` |
 | POST | /api/incidencias/:id/comentarios | todos sobre sus incidencias (`esInterno`/`esResolucion` solo soporte) |
 | POST | /api/incidencias/:id/transferencias | admin, agente del departamento |
+| PUT / DELETE | /api/incidencias/:id/relacion | admin, agente del departamento: relaciona (`idPrincipal`, `tipo`: `duplicada` o `causa_raiz`) o quita la relación |
+| POST | /api/incidencias/:id/relacionadas/resolver | admin, agente: con la principal resuelta, resuelve o cierra de una vez las relacionadas (`ids`, `estado`, `comentario`) |
 | GET | /api/agentes | admin, agente |
 | GET · POST · PATCH | /api/usuarios · /api/usuarios/:id | admin |
