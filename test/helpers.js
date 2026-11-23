@@ -1,63 +1,31 @@
 // Utilidades para las pruebas: base de datos aislada y servidor de la API en un puerto libre.
 //
-// Cada archivo de prueba crea su propia base temporal copiando de la base configurada en .env (PGDATABASE)
-// SOLO la estructura (tablas, triggers, funciones) y los catálogos (roles, departamentos, categorías,
-// estados y prioridades). No se copian usuarios ni incidencias reales, y la base se borra al terminar.
-import { spawn } from 'node:child_process'
+// Cada archivo de prueba crea su propia base temporal con el MISMO instalador que usan los clientes
+// (server/lib/install.js: db/esquema.sql + db/catalogos.sql + db/plantilla.sql). No se lee la base real:
+// así cada "npm test" comprueba también que los archivos de db/ instalan un sistema que funciona.
+// La conexión sale de .env (PGHOST, PGUSER, PGPASSWORD...) y la base se borra al terminar.
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { hashPassword } from '../server/lib/crypto.js'
 import { createApp, readConfig } from '../server/app.js'
-import { pgTool } from '../server/backup.js'
+import { dropDatabase, installDatabase } from '../server/lib/install.js'
 import { createDb } from '../server/db.js'
 
-const CATALOG_TABLES = ['roles', 'departamentos', 'categorias', 'estados_incidencia', 'prioridades']
 export const PASSWORD = 'Prueba12345'
 const ITERATIONS = 1000 // rápido en pruebas; en producción se usan 100000
 
-function run(command, args, { input } = {}) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: [input ? 'pipe' : 'ignore', 'pipe', 'pipe'] })
-    let stdout = ''
-    let stderr = ''
-    child.stdout.on('data', (chunk) => { stdout += chunk })
-    child.stderr.on('data', (chunk) => { stderr += chunk })
-    child.on('error', reject)
-    child.on('close', (code) => (code === 0 ? resolve(stdout) : reject(new Error(`${command} ${args.join(' ')}: ${stderr.trim()}`))))
-    if (input) input.pipe(child.stdin)
-  })
-}
-
-// pg_dump de la base de origen → psql en la base de prueba.
-async function copy(source, target, dumpArgs) {
-  const dump = spawn(pgTool('pg_dump'), [...dumpArgs, '--no-owner', '--no-privileges', source], { stdio: ['ignore', 'pipe', 'pipe'] })
-  let stderr = ''
-  dump.stderr.on('data', (chunk) => { stderr += chunk })
-  const dumped = new Promise((resolve, reject) => dump.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`pg_dump: ${stderr.trim()}`)))))
-  await Promise.all([run(pgTool('psql'), ['-q', '-v', 'ON_ERROR_STOP=1', '-d', target], { input: dump.stdout }), dumped])
-}
-
 // Crea la base de prueba y devuelve { db, name, drop }.
 export async function createTestDatabase() {
-  const source = process.env.PGDATABASE
-  if (!source) throw new Error('Configura PGDATABASE (archivo .env) para ejecutar las pruebas.')
-  const name = `${source}_prueba_${process.pid}_${Date.now()}`
-  await run(pgTool('createdb'), [name])
-  try {
-    await copy(source, name, ['--schema-only'])
-    await copy(source, name, ['--data-only', '--disable-triggers', ...CATALOG_TABLES.flatMap((t) => ['-t', t])])
-  } catch (error) {
-    await run(pgTool('dropdb'), ['--force', name]).catch(() => {})
-    throw error
-  }
+  const name = `tickops_prueba_${process.pid}_${Date.now()}`
+  await installDatabase({ database: name, template: true })
   const db = createDb({ database: name, max: 5 })
   return {
     db,
     name,
     async drop() {
       await db.end()
-      await run(pgTool('dropdb'), ['--force', name])
+      await dropDatabase(name)
     }
   }
 }

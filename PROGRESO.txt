@@ -118,6 +118,19 @@ LO QUE YA ESTÁ HECHO
    - Tema oscuro: las listas desplegables (<select>) se abrían blancas con texto claro (ilegible). El panel admin
      ahora declara color-scheme (claro u oscuro según el tema) y fija el color de las opciones.
    - "(opcional)" y notas similares van en la misma línea que su etiqueta (envueltas en <span class="label-text">).
+15. Esquema de la base e instalador (22-nov):
+   - db/esquema.sql (tablas, funciones, triggers, índices; lo genera "npm run exportar-esquema" desde la base de
+     desarrollo, sin datos y sin líneas que dependan de la versión de PostgreSQL), db/catalogos.sql (roles, estados,
+     prioridades con SLA) y db/plantilla.sql (4 departamentos y 7 categorías de ejemplo, opcionales).
+   - "npm run instalar" (server/instalar.js): si no hay .env lo crea pidiendo la conexión y generando SESSION_SECRET y
+     BACKUP_PASSWORD; crea la base y carga todo en una transacción; pregunta por la plantilla; crea el primer admin.
+     NUNCA instala sobre una base con tablas. Opciones: --con-plantilla, --sin-plantilla, --sin-admin.
+   - "npm run exportar-esquema -- --comprobar" avisa si db/esquema.sql quedó desactualizado respecto a la base.
+   - Las pruebas ya no copian de la base real: cada archivo instala su base temporal con el mismo instalador
+     (server/lib/install.js). Total: 85 pruebas OK (6 nuevas en test/instalar.test.js).
+   - Probado a mano desde una carpeta vacía (sin .env): instalación, inicio de sesión del admin nuevo y alta de un
+     departamento en la base nueva. Base y .env de prueba borrados.
+   - crear-admin.js usa ahora server/lib/admin.js y server/lib/prompt.js (compartidos con el instalador).
 
 CÓMO ARRANCAR
 -------------
@@ -145,6 +158,9 @@ EN LÍNEA (tickops.bid) CON LA PC COMO SERVIDOR
 
 LO QUE FALTA
 ------------
+- Siguiente para vender instalaciones: migraciones de base de datos + comando "actualizar", clave de licencia firmada,
+  cuenta de soporte desactivable e informe de diagnóstico, manuales y contrato; ajustar /planes a licencia perpetua +
+  mantenimiento anual (pendiente de decisión del equipo).
 - Artículos FAQ (tabla articulos_faq): pantalla de consulta y edición.
 - Restablecer contraseña por correo (tabla tokens_restablecimiento).
 - (Hecho, punto 13) Administrar departamentos desde el panel.

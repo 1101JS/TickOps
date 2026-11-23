@@ -8,7 +8,7 @@ src/        Frontend Vue 3 + Vite (landing, login, paneles por rol)
 server/             Backend Node.js + Express
   app.js          Crea la aplicación Express de la API REST y monta middlewares y routers
   middleware.js   CSRF, sesión (req.user), control de roles, validación de JSON y manejo de errores
-  routes/         Un router por recurso: auth, catalogos, incidencias (+ adjuntos), categorias, usuarios (y agentes)
+  routes/         Un router por recurso: auth, catalogos, incidencias (+ adjuntos), categorias, departamentos, usuarios (y agentes)
   lib/http.js     Errores HTTP, validación de datos y traducción de errores de PostgreSQL
   lib/users.js    Usuarios, sesión firmada y límite de intentos de login
   lib/incidents.js Reglas de incidencias: permisos por rol, estados permitidos, SLA e historial
@@ -19,47 +19,72 @@ server/             Backend Node.js + Express
   respaldo.js     Comandos de consola: npm run respaldo / descifrar-respaldo
   node.js         Servidor local: API Express + frontend compilado (dist/) + respaldo automático
   crear-admin.js  Crea un administrador desde la consola
+  instalar.js     Instalación en un servidor nuevo: .env, base de datos y primer administrador
+  exportar-esquema.js  Regenera db/esquema.sql desde la base de desarrollo
+  lib/install.js  Crea la base y carga los archivos de db/ (lo usan instalar.js y las pruebas)
   worker.js       Cloudflare (tickops.bid): sirve el sitio y reenvía /api al túnel de la PC
+db/                 esquema.sql (estructura), catalogos.sql (roles, estados, prioridades), plantilla.sql (ejemplos)
 test/               Pruebas automáticas (npm test)
 iniciar-tickops.bat  Arranca todo en la PC (PostgreSQL + túnel + API); hay un acceso directo en el escritorio
 ```
 
 ## Puesta en marcha
 
-Requisitos: Node 22.13+ y PostgreSQL con la base `sistema_incidencias` restaurada.
+### Instalación en un servidor nuevo (cliente)
 
-1. Crea el archivo `.env` en la raíz (no se sube a git):
+Requisitos: Node 22.13+ y PostgreSQL 13 o superior (con un usuario que pueda crear bases de datos).
 
-   ```
-   PGHOST=localhost
-   PGPORT=5432
-   PGUSER=postgres
-   PGPASSWORD=tu-contraseña
-   PGDATABASE=sistema_incidencias
-   SESSION_SECRET=una-cadena-larga-y-aleatoria
-   ALLOW_REGISTRATION=false
-   # Respaldo automático (opcional; ver "Respaldos")
-   BACKUP_DIR=C:\Users\<usuario>\Respaldos TickOps
-   BACKUP_PASSWORD=otra-cadena-larga-y-aleatoria
-   BACKUP_KEEP=14
-   BACKUP_REMOTE=tickops:Respaldos TickOps   # copia en la nube con rclone (opcional)
-   # Carpeta de adjuntos (opcional; por defecto ./adjuntos, fuera de git)
-   ATTACHMENTS_DIR=
-   ```
+```bash
+npm install
+npm run instalar
+npm run build
+npm run lan        # http://localhost:3000 (y http://<ip-del-equipo>:3000 en la red)
+```
 
-2. Instala dependencias y crea el primer administrador:
+`npm run instalar`:
 
-   ```bash
-   npm install
-   npm run crear-admin
-   ```
+1. Si no hay `.env`, pide los datos de PostgreSQL y lo crea con `SESSION_SECRET` y `BACKUP_PASSWORD` generados al azar
+   (la clave de respaldo se muestra una vez: guárdala fuera del equipo).
+2. Crea la base (`PGDATABASE`) y carga `db/esquema.sql` + `db/catalogos.sql` en una sola transacción. Pregunta si
+   cargar `db/plantilla.sql` (4 departamentos y 7 categorías de ejemplo); sin ella, el admin crea los suyos.
+3. Crea el primer administrador.
 
-3. Arranca:
+**Nunca instala sobre una base que ya tenga tablas**, así que no puede borrar ni mezclar información existente.
+Opciones: `npm run instalar -- --con-plantilla | --sin-plantilla | --sin-admin`.
 
-   ```bash
-   npm run build
-   npm run lan        # http://localhost:3000 (y http://<ip-del-equipo>:3000 en la red)
-   ```
+Si se pierde la contraseña del administrador: `npm run crear-admin` crea otro desde la consola del servidor.
+
+### Cambios en la estructura de la base
+
+`db/esquema.sql` se genera desde la base de desarrollo; no se edita a mano.
+
+```bash
+npm run exportar-esquema                  # vuelve a escribir db/esquema.sql
+npm run exportar-esquema -- --comprobar   # avisa si db/esquema.sql quedó desactualizado
+```
+
+Los catálogos (`db/catalogos.sql`) y la plantilla (`db/plantilla.sql`) se mantienen a mano. El código busca roles y
+estados por nombre: no cambies esos nombres sin cambiar también el servidor.
+
+### Variables de `.env`
+
+```
+PGHOST=localhost
+PGPORT=5432
+PGUSER=postgres
+PGPASSWORD=tu-contraseña
+PGDATABASE=sistema_incidencias
+PORT=3000
+SESSION_SECRET=una-cadena-larga-y-aleatoria
+ALLOW_REGISTRATION=false
+# Respaldo automático (opcional; ver "Respaldos")
+BACKUP_DIR=C:\Users\<usuario>\Respaldos TickOps
+BACKUP_PASSWORD=otra-cadena-larga-y-aleatoria
+BACKUP_KEEP=14
+BACKUP_REMOTE=tickops:Respaldos TickOps   # copia en la nube con rclone (opcional)
+# Carpeta de adjuntos (opcional; por defecto ./adjuntos, fuera de git)
+ATTACHMENTS_DIR=
+```
 
 ### Desarrollo (recarga en caliente)
 
@@ -93,9 +118,13 @@ Usa el ejecutor de pruebas integrado de Node (`node:test`), sin dependencias ext
   incidencia, comentarios internos, transferencias, protecciones CSRF/JSON).
 - `test/backup.test.js`: respaldo cifrado, clave incorrecta y retención.
 - `test/attachments.test.js`: adjuntos (subir, descargar, permisos, tipos y tamaños, respaldo de archivos).
+- `test/vista.test.js`: cambio de vista del administrador (como agente o solicitante).
+- `test/departamentos.test.js`: administración de departamentos y sus reglas.
+- `test/instalar.test.js`: instalación desde `db/` (base nueva, plantilla opcional, `.env` generado, protección de
+  bases existentes y el comando `npm run instalar` completo).
 
-Cada archivo crea una base temporal copiando de `PGDATABASE` **solo la estructura y los catálogos**
-(sin usuarios ni incidencias reales) y la borra al terminar; la base real no se modifica.
+Cada archivo crea una base temporal **con el mismo instalador que usan los clientes** (archivos de `db/`), sin leer
+la base real, y la borra al terminar. Así cada `npm test` comprueba también que `db/` instala un sistema que funciona.
 
 ## Respaldos
 
