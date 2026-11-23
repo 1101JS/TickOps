@@ -44,7 +44,7 @@ onMounted(() => {
       </nav>
 
       <ThemeSwitcher class="landing-theme" />
-      <a href="#contacto" class="help-portal">Solicitar información ↗</a>
+      <RouterLink to="/planes" class="help-portal">Planes y precios ↗</RouterLink>
     </header>
 
     <section class="landing-hero">
@@ -62,10 +62,10 @@ onMounted(() => {
         </p>
 
         <div class="hero-actions">
-          <a href="#contacto" class="hero-primary-button">
+          <RouterLink to="/planes" class="hero-primary-button">
             <span class="ms-icon">▦</span>
             Conocer TickOps
-          </a>
+          </RouterLink>
           <RouterLink to="/login" class="hero-secondary-button">
             Acceso al sistema →
           </RouterLink>
@@ -288,9 +288,9 @@ onMounted(() => {
           Conoce cómo implementar TickOps como servicio de soporte técnico
           para tu organización, con acceso local para sus usuarios y equipo.
         </p>
-        <a href="mailto:contacto@tickops.com" class="cta-button">
-          Solicitar información <span>→</span>
-        </a>
+        <RouterLink to="/planes" class="cta-button">
+          Ver funciones y planes <span>→</span>
+        </RouterLink>
       </div>
       <div class="cta-mark">T</div>
     </section>

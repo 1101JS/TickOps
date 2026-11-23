@@ -7,17 +7,20 @@ import ApplicantFramework from '../../applicant/framework.vue'
 import IncidentDetail from '../components/IncidentDetail.vue'
 import '../styles/RoleViews.css'
 import { getSession, routeForRole } from '../../../services/AuthService.js'
+import { actingUser, currentView } from '../../../services/ViewService.js'
 
 const props = defineProps({
   incidentId: { type: Number, required: true }
 })
 
-const user = getSession()
+// En la vista de agente o solicitante del administrador, la ficha se muestra y gestiona como ese rol.
+const user = actingUser(getSession())
 const removed = ref(false)
 
 const framework = computed(() => ({ admin: AdminFramework, agent: AgentFramework }[user?.role] || ApplicantFramework))
 const back = computed(() => ({
   name: routeForRole(user?.role),
+  query: currentView.value?.role === 'agent' ? { departamento: String(currentView.value.departamentoId) } : {},
   hash: { admin: '#incidents', agent: '#queue' }[user?.role] || ''
 }))
 const backLabel = computed(() => ({ admin: 'Volver a incidencias', agent: 'Volver a la bandeja' }[user?.role] || 'Volver a mis solicitudes'))

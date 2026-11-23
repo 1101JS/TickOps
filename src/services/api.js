@@ -6,13 +6,23 @@ export class ApiError extends Error {
   }
 }
 
+// Vista activa del administrador ("agente:<id>" o "solicitante"); la fija ViewService. El servidor la ignora en otros roles.
+let viewHeader = null
+export function setViewHeader(value) {
+  viewHeader = value || null
+}
+
+function headers(extra = {}) {
+  return viewHeader ? { ...extra, 'x-vista': viewHeader } : extra
+}
+
 export async function api(path, { method = 'GET', body } = {}) {
   let response
   try {
     response = await fetch(`/api${path}`, {
       method,
       credentials: 'same-origin',
-      headers: body !== undefined ? { 'content-type': 'application/json' } : undefined,
+      headers: headers(body !== undefined ? { 'content-type': 'application/json' } : {}),
       body: body !== undefined ? JSON.stringify(body) : undefined
     })
   } catch {
@@ -28,7 +38,7 @@ export async function api(path, { method = 'GET', body } = {}) {
 export async function apiUpload(path, formData) {
   let response
   try {
-    response = await fetch(`/api${path}`, { method: 'POST', credentials: 'same-origin', body: formData })
+    response = await fetch(`/api${path}`, { method: 'POST', credentials: 'same-origin', headers: headers(), body: formData })
   } catch {
     throw new ApiError(0, 'No se pudo conectar con el servidor.')
   }

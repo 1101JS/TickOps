@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import '../styles/AdminDashboard.css'
 import ThemeSwitcher from '../../../components/ThemeSwitcher.vue'
+import AdminViewSwitcher from '../../shared/AdminViewSwitcher.vue'
 import { getSession, logout } from '../../../services/AuthService.js'
 import { exportIncidentsToExcel, exportIncidentsToPdf } from '../../../services/ExportService.js'
 import {
@@ -270,6 +271,7 @@ onMounted(loadData)
   <main class="dashboard admin-dashboard">
     <aside class="dashboard-sidebar">
       <div class="sidebar-brand"><span class="brand-mark">E</span><div><h2>ETicket</h2><span>Administración · UTH</span></div></div>
+      <AdminViewSwitcher />
       <nav class="sidebar-nav" aria-label="Navegación de administración">
         <button class="nav-item" :class="{ active: activeSection === 'panel' }" @click="goTo('panel')">⌂ Panel principal</button>
         <button class="nav-item" :class="{ active: activeSection === 'incidents' }" @click="goTo('incidents')">▤ Incidencias</button>

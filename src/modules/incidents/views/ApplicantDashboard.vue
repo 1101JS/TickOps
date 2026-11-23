@@ -5,13 +5,14 @@ import { useRoute, useRouter } from 'vue-router'
 import ApplicantFramework from '../../applicant/framework.vue'
 import '../styles/RoleViews.css'
 import { getSession } from '../../../services/AuthService.js'
+import { actingUser } from '../../../services/ViewService.js'
 import {
   ATTACHMENT_EXTENSIONS, categoriesByDepartment, checkAttachments, createIncident, formatDate, getCatalogs, getIncidents, slug, uploadAttachments
 } from '../../../services/IncidentService.js'
 
 const route = useRoute()
 const router = useRouter()
-const user = getSession()
+const user = actingUser(getSession())
 const incidents = ref([])
 const catalogs = ref({ categorias: [], prioridades: [] })
 const emptyForm = () => ({ titulo: '', descripcion: '', idCategoria: '', idPrioridad: catalogs.value.prioridades.find((p) => p.nombre === 'Media')?.id ?? '' })

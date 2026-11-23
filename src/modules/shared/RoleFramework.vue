@@ -1,7 +1,9 @@
 <script setup>
 import { useRoute, useRouter } from 'vue-router'
 import ThemeSwitcher from '../../components/ThemeSwitcher.vue'
-import { logout } from '../../services/AuthService.js'
+import { getSession, logout } from '../../services/AuthService.js'
+import { currentView } from '../../services/ViewService.js'
+import AdminViewSwitcher from './AdminViewSwitcher.vue'
 
 // items: [{ label, to }] donde "to" es una ubicación de vue-router, p. ej. { name: 'AgentDashboard', hash: '#queue' }.
 const props = defineProps({
@@ -12,6 +14,7 @@ const props = defineProps({
 
 const route = useRoute()
 const router = useRouter()
+const isAdmin = getSession()?.role === 'admin'
 
 // RouterLink ignora el #hash al marcar el enlace activo, así que se calcula aquí.
 function isActive(item, index) {
@@ -31,6 +34,7 @@ async function signOut() {
   <main class="role-framework">
     <aside class="role-sidebar">
       <RouterLink class="role-brand" to="/"><span>E</span><div><strong>ETicket</strong><small>{{ subtitle }}</small></div></RouterLink>
+      <AdminViewSwitcher v-if="isAdmin" />
       <p class="role-label">{{ role }}</p>
       <nav class="role-navigation" :aria-label="`Navegación de ${role}`">
         <RouterLink
@@ -43,7 +47,16 @@ async function signOut() {
         <button class="role-logout" type="button" @click="signOut">Cerrar sesión</button>
       </div>
     </aside>
-    <section class="role-content"><slot /></section>
+    <section class="role-content">
+      <p v-if="isAdmin && currentView" class="view-banner" role="status">
+        <span>
+          Estás usando TickOps como <strong>{{ currentView.role === 'agent' ? `agente de ${currentView.departamento}` : 'solicitante' }}</strong>
+          con tu cuenta de administrador. Lo que hagas aquí queda registrado a tu nombre.
+        </span>
+        <RouterLink :to="{ name: 'AdminDashboard' }">Volver a administración</RouterLink>
+      </p>
+      <slot />
+    </section>
   </main>
 </template>
 
@@ -62,6 +75,8 @@ async function signOut() {
 .role-footer{display:flex;flex-direction:column;align-items:flex-start;gap:12px;margin-top:auto;padding-top:20px}
 .role-logout{width:100%;padding:11px;border:0;border-radius:8px;background:transparent;color:var(--role-danger);cursor:pointer;text-align:left;font-size:14px}
 .role-logout:hover{background:var(--role-danger-soft)}
+.view-banner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 18px;margin:0 0 22px;padding:12px 16px;border:1px solid var(--role-primary);border-radius:10px;background:var(--role-primary-soft);color:var(--role-text);font-size:13px;line-height:1.5}
+.view-banner a{flex:0 0 auto;color:var(--role-primary);font-weight:700}
 .role-content{flex:1;min-width:0;padding:40px clamp(20px,4vw,58px) 60px}
 @media(max-width:720px){.role-framework{flex-direction:column}.role-sidebar{flex-basis:auto;padding:16px;border-right:0;border-bottom:1px solid var(--role-border)}.role-label{margin:16px 0 7px}.role-navigation{flex-direction:row;flex-wrap:wrap}.role-navigation a{padding:7px 9px;font-size:12px}.role-footer{flex-direction:row;align-items:center;justify-content:space-between;padding-top:12px}.role-logout{width:auto}.role-content{padding:26px 16px 42px}}
 </style>

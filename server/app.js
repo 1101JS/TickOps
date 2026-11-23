@@ -10,7 +10,7 @@
 //   lib/*.js        lógica compartida: validación, usuarios/sesión, reglas de incidencias, cifrado
 import express from 'express'
 import { attachmentsDir } from './lib/attachments.js'
-import { errorHandler, loadUser, notFound, requireJsonObject, sameOrigin } from './middleware.js'
+import { applyView, errorHandler, loadUser, notFound, requireJsonObject, sameOrigin } from './middleware.js'
 import authRoutes from './routes/auth.js'
 import catalogRoutes from './routes/catalogos.js'
 import categoryRoutes from './routes/categorias.js'
@@ -43,7 +43,8 @@ export function createApp({ db, config }) {
   })
   api.use('/auth', authRoutes)
   api.use('/catalogos', catalogRoutes)
-  api.use('/incidencias', incidentRoutes)
+  // La vista del administrador (X-Vista) solo cambia cómo se ven y gestionan las incidencias.
+  api.use('/incidencias', applyView, incidentRoutes)
   api.use('/categorias', categoryRoutes)
   api.use('/', userRoutes) // /agentes y /usuarios
   api.use(notFound)

@@ -1,13 +1,15 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AgentFramework from '../../agent/framework.vue'
 import '../styles/RoleViews.css'
 import { getSession } from '../../../services/AuthService.js'
+import { actingUser } from '../../../services/ViewService.js'
 import { formatDate, getCatalogs, getIncidents, replaceIncident, slug, updateIncident } from '../../../services/IncidentService.js'
 
 const router = useRouter()
-const user = getSession()
+// Con la vista de agente del administrador, "user" lleva el departamento elegido en el selector.
+const user = computed(() => actingUser(getSession()))
 const incidents = ref([])
 const notice = ref('')
 const error = ref('')
@@ -16,18 +18,18 @@ const search = ref('')
 const priorityFilter = ref('')
 const categoryFilter = ref('')
 const catalogs = ref({ categorias: [], prioridades: [] })
-const ownCategories = computed(() => catalogs.value.categorias.filter((c) => c.departamentoId === user?.departamentoId))
+const ownCategories = computed(() => catalogs.value.categorias.filter((c) => c.departamentoId === user.value?.departamentoId))
 
 // El servidor devuelve la cola del departamento del agente (más las incidencias que él mismo haya solicitado).
-const department = computed(() => incidents.value.filter((i) => i.departamentoId === user?.departamentoId))
+const department = computed(() => incidents.value.filter((i) => i.departamentoId === user.value?.departamentoId))
 const queue = computed(() => department.value.filter((i) => !i.agenteId && !i.estadoFinal))
-const mine = computed(() => department.value.filter((i) => i.agenteId === user?.id && !i.estadoFinal))
+const mine = computed(() => department.value.filter((i) => i.agenteId === user.value?.id && !i.estadoFinal))
 const late = computed(() => department.value.filter((i) => i.sla.resolucionVencida))
 const tabs = computed(() => [
   { key: 'cola', label: 'Sin asignar', items: queue.value },
   { key: 'mias', label: 'Mis asignadas', items: mine.value },
   { key: 'departamento', label: 'Todo el departamento', items: department.value },
-  { key: 'solicitadas', label: 'Mis solicitudes', items: incidents.value.filter((i) => i.solicitanteId === user?.id) }
+  { key: 'solicitadas', label: 'Mis solicitudes', items: incidents.value.filter((i) => i.solicitanteId === user.value?.id) }
 ])
 const visible = computed(() => {
   const term = search.value.trim().toLowerCase()
@@ -52,7 +54,7 @@ async function load() {
 async function take(incident) {
   error.value = ''
   try {
-    replaceIncident(incidents.value, await updateIncident(incident.id, { idAgente: user.id }))
+    replaceIncident(incidents.value, await updateIncident(incident.id, { idAgente: user.value.id }))
     notice.value = `Tomaste la incidencia #${incident.id}; ahora está En Proceso.`
   } catch (err) {
     error.value = err.message
@@ -65,6 +67,8 @@ function openIncident(id) {
 }
 
 onMounted(load)
+// El administrador puede cambiar de departamento sin salir de la vista: se recarga la bandeja.
+watch(() => user.value?.departamentoId, () => { notice.value = ''; error.value = ''; load() })
 </script>
 
 <template>

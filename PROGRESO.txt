@@ -64,7 +64,7 @@ LO QUE YA ESTÁ HECHO
    - Exportar reportes (opcional): "Exportar Excel" (.xlsx) y "Exportar PDF" en el panel del administrador,
      con los filtros aplicados. Librerías write-excel-file y jsPDF, cargadas solo al exportar.
    - Avisos por correo: DESCARTADOS por decisión del equipo (22-nov).
-   - Total de pruebas: 63 (14 de lógica, 37 de API, 4 de respaldo, 8 de adjuntos), todas OK.
+   - Total de pruebas: 64 (14 de lógica, 37 de API, 5 de respaldo, 8 de adjuntos), todas OK (revisado 22-nov; ver punto 12: ahora 71).
 10. Limpieza y tema (22-nov):
    - Eliminados archivos de ejemplo sin uso: UsersView.vue, IncidentHistory.vue (datos de ejemplo, sin ruta),
      restos de la plantilla de Vite (src/assets/*, public/icons.svg, CSS #social/.counter/.hero/#center/
@@ -77,6 +77,29 @@ LO QUE YA ESTÁ HECHO
      BACKUP_DIR = C:\Users\Daniel\Respaldos TickOps (local). Una copia se sube con rclone (instalado con
      winget) a la cuenta personal de Microsoft del proyecto: remoto "tickops", carpeta "Respaldos TickOps"
      (BACKUP_REMOTE en .env). Credencial de rclone en %APPDATA%\rclone\rclone.conf (no compartir).
+11. Página de planes y precios (22-nov):
+   - Nueva ruta /planes (src/modules/landing/views/PlansView.vue): todas las funciones del sistema en 6 grupos,
+     planes Mensual ($19/mes), Anual ($190/año) y Licencia de por vida ($1,499 pago único), en USD,
+     y preguntas frecuentes. Precios y textos se editan en las listas al inicio del archivo.
+   - En la landing, "Solicitar información" (ahora "Planes y precios"), "Conocer TickOps" y la llamada final
+     llevan a /planes (ya no hay mailto a contacto@tickops.com).
+   - "Elegir este plan" muestra un resumen y avisa que la contratación en línea estará disponible pronto:
+     todavía no hay forma real de contratar (falta decidir correo, formulario o pago en línea).
+   - Corregido: una regla global de AdminDashboard.css ponía en fila los encabezados de sección de la landing.
+12. Cambio de vista del administrador (22-nov):
+   - Selector "Ver como" en la barra lateral (solo admins): Administrador, Agente de cada departamento o Solicitante.
+     Con su MISMA cuenta el admin usa y actúa en esa vista: tomar/resolver/transferir como agente, registrar
+     incidencias como solicitante. Una barra azul avisa la vista activa y tiene "Volver a administración".
+   - Servidor: encabezado X-Vista ("agente:<idDepartamento>" o "solicitante"), aplicado en /api/incidencias
+     (middleware applyView). Solo vale para admins; en otros roles se ignora (no da permisos). Aplica las mismas
+     reglas que ese rol, y comentarios e historial quedan a nombre del admin.
+   - Un administrador puede quedar como agente asignado de una incidencia (validAgent lo acepta).
+   - Frontend: src/services/ViewService.js (vista en sessionStorage, se borra al entrar o salir),
+     src/modules/shared/AdminViewSwitcher.vue; rutas /agente?departamento=ID y /mis-incidencias permiten admin.
+   - Pruebas: test/vista.test.js (7). Total: 71 pruebas, todas OK. Navegador sobre copia temporal de la base
+     (ya borrada): 14 comprobaciones OK.
+   - IMPORTANTE al publicar: reiniciar la API de la PC (icono TickOps). Si no, el sitio nuevo habla con la API vieja
+     y la vista de agente no funciona bien.
 
 CÓMO ARRANCAR
 -------------
@@ -104,14 +127,14 @@ EN LÍNEA (tickops.bid) CON LA PC COMO SERVIDOR
 
 LO QUE FALTA
 ------------
-- Adjuntos (tabla adjuntos): subir/descargar archivos de hasta 5 MB.
 - Artículos FAQ (tabla articulos_faq): pantalla de consulta y edición.
 - Restablecer contraseña por correo (tabla tokens_restablecimiento).
 - Administrar departamentos desde el panel (hoy solo se ven; las categorías ya se administran).
 - Respaldos: si más adelante se contrata un servicio de respaldo en la nube, se configura como otro remoto
   de rclone y se cambia BACKUP_REMOTE (rclone admite S3, Backblaze, Google Drive, etc.).
 - Propuesta inicial: todo lo obligatorio y los opcionales elegidos están hechos (avisos por correo descartados).
-- Landing: botón "Solicitar información" usa mailto:contacto@tickops.com (dominio incorrecto).
+- Planes: definir cómo se contrata (correo con Email Routing de Cloudflare en tickops.bid, formulario
+  guardado en la base o pago en línea). tickops.bid no tiene correo (sin registro MX).
 - Los datos viejos de SQLite (carpeta data/) ya no se usan; se pueden borrar.
 - El panel de Administrador usa su propio diseño (AdminDashboard.css); la ficha /incidencia/:id del
   admin usa el diseño de los portales. Unificar si se quiere el mismo aspecto.

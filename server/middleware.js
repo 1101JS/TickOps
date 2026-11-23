@@ -33,6 +33,29 @@ export async function loadUser(req, res, next) {
   next()
 }
 
+// Cambio de vista del administrador: con el encabezado "X-Vista" un admin usa las incidencias como
+// "agente:<idDepartamento>" o como "solicitante", con su propia cuenta y las mismas reglas que ese rol.
+// Todo queda registrado a su nombre. En otros roles el encabezado se ignora: no puede dar más permisos.
+export const VIEW_HEADER = 'x-vista'
+
+export async function applyView(req, res, next) {
+  const view = req.get(VIEW_HEADER)
+  if (!view || req.user?.role !== 'admin') return next()
+  if (view === 'solicitante') {
+    req.user = { ...req.user, role: 'applicant', vista: 'applicant' }
+    return next()
+  }
+  const match = /^agente:(\d+)$/.exec(view)
+  if (!match) throw new HttpError(400, 'Vista no válida.')
+  const department = await req.app.locals.db.first(
+    'SELECT id_departamento, nombre FROM departamentos WHERE id_departamento = $1 AND activo',
+    [Number(match[1])]
+  )
+  if (!department) throw new HttpError(400, 'El departamento de la vista de agente no existe o está inactivo.')
+  req.user = { ...req.user, role: 'agent', departamentoId: department.id_departamento, departamento: department.nombre, vista: 'agent' }
+  next()
+}
+
 // Exige sesión iniciada y uno de los roles indicados.
 export function requireRole(roles) {
   return (req, res, next) => {

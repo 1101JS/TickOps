@@ -245,10 +245,12 @@ export async function withHistory(tx, row, actorId, detail, apply) {
   }
 }
 
+// Puede atender una incidencia un agente activo de su departamento o un administrador
+// (el admin la toma desde su vista de agente, sin necesitar una segunda cuenta).
 export async function validAgent(db, agentId, departmentId) {
   const agent = await db.first(
     `SELECT u.id_usuario, u.nombre FROM usuarios u JOIN roles r ON r.id_rol = u.id_rol
-     WHERE u.id_usuario = $1 AND u.activo AND r.nombre = 'Agente' AND u.id_departamento = $2`,
+     WHERE u.id_usuario = $1 AND u.activo AND (r.nombre = 'Administrador' OR (r.nombre = 'Agente' AND u.id_departamento = $2))`,
     [agentId, departmentId]
   )
   if (!agent) throw new HttpError(400, 'El agente indicado no existe, está inactivo o no pertenece al departamento de la incidencia.')

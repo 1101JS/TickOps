@@ -1,4 +1,5 @@
 import { api } from './api.js'
+import { clearView } from './ViewService.js'
 
 // La sesión real vive en una cookie HttpOnly firmada por el servidor; aquí solo se guarda en memoria el usuario actual.
 let currentUser = null
@@ -14,6 +15,7 @@ export function loadSession(force = false) {
 }
 
 export async function login(correo, password) {
+  clearView()
   const data = await api('/auth/login', { method: 'POST', body: { correo, password } })
   currentUser = data.user
   loaded = Promise.resolve(currentUser)
@@ -42,6 +44,7 @@ export function routeForRole(role) {
 }
 
 export async function logout() {
+  clearView()
   currentUser = null
   loaded = Promise.resolve(null)
   await api('/auth/logout', { method: 'POST' }).catch(() => {})
