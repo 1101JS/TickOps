@@ -119,18 +119,39 @@ LO QUE YA ESTÁ HECHO
      ahora declara color-scheme (claro u oscuro según el tema) y fija el color de las opciones.
    - "(opcional)" y notas similares van en la misma línea que su etiqueta (envueltas en <span class="label-text">).
 15. Esquema de la base e instalador (22-nov):
-   - db/esquema.sql (tablas, funciones, triggers, índices; lo genera "npm run exportar-esquema" desde la base de
+   - db/esquema.sql (tablas, funciones, triggers, índices; se generó desde la base de
      desarrollo, sin datos y sin líneas que dependan de la versión de PostgreSQL), db/catalogos.sql (roles, estados,
      prioridades con SLA) y db/plantilla.sql (4 departamentos y 7 categorías de ejemplo, opcionales).
    - "npm run instalar" (server/instalar.js): si no hay .env lo crea pidiendo la conexión y generando SESSION_SECRET y
      BACKUP_PASSWORD; crea la base y carga todo en una transacción; pregunta por la plantilla; crea el primer admin.
      NUNCA instala sobre una base con tablas. Opciones: --con-plantilla, --sin-plantilla, --sin-admin.
-   - "npm run exportar-esquema -- --comprobar" avisa si db/esquema.sql quedó desactualizado respecto a la base.
+   - (Punto 16: "exportar-esquema" se retiró; esquema.sql quedó congelado como versión base.)
    - Las pruebas ya no copian de la base real: cada archivo instala su base temporal con el mismo instalador
      (server/lib/install.js). Total: 85 pruebas OK (6 nuevas en test/instalar.test.js).
    - Probado a mano desde una carpeta vacía (sin .env): instalación, inicio de sesión del admin nuevo y alta de un
      departamento en la base nueva. Base y .env de prueba borrados.
    - crear-admin.js usa ahora server/lib/admin.js y server/lib/prompt.js (compartidos con el instalador).
+16. Migraciones y actualizaciones (22-nov):
+   - db/esquema.sql + db/catalogos.sql = versión base CONGELADA (no se editan). Cada cambio posterior va en
+     db/migraciones/0001_descripcion.sql, 0002_..., reglas en db/migraciones/LEEME.md. Aún no hay ninguna.
+   - Tabla esquema_migraciones (versión, nombre, huella SHA-256, fecha). La crea el motor al migrar por primera vez:
+     la base real todavía NO la tiene (no hacía falta, no hay migraciones).
+   - "npm run migrar" (aplica pendientes) y "npm run migrar -- --estado" (solo muestra).
+   - "npm run actualizar": respaldo cifrado (pregunta si no está configurado) → npm install → migraciones → build.
+     Opciones --sin-respaldo, --sin-dependencias, --sin-compilar. Luego reiniciar TickOps.
+   - "npm run comprobar-esquema": compara tu base con una instalación nueva (base + migraciones) y muestra las
+     diferencias si alguien cambió la base a mano. Hoy: "Todo en orden" para sistema_incidencias.
+   - Garantías: cada migración en su transacción (si falla se revierte y no siguen las demás); bloqueo para que
+     dos procesos no migren a la vez; se detiene si una migración aplicada fue editada o si la base es más nueva
+     que el código. "npm run instalar" aplica todas las migraciones. El servidor avisa al arrancar si faltan.
+   - Pruebas: test/migraciones.test.js (7). Total: 92, todas OK.
+17. Barra de módulos siempre visible (22-nov):
+   - Computadora: la barra lateral queda fija al hacer scroll en los tres portales y en la ficha de incidencia
+     (antes solo en el panel admin); si la ventana es baja, la barra tiene su propio scroll.
+   - Teléfono: los módulos pasan a una barra fija abajo que se desliza de lado (el módulo marcado se centra).
+   - Panel admin: el módulo marcado sigue el scroll (antes solo cambiaba al hacer clic).
+   - Corregido: en teléfono las filas de incidencias del agente/solicitante se comprimían palabra por palabra.
+   - Navegador (servidor local, solo lectura): 16 comprobaciones OK. Se mantuvo la página única con scroll.
 
 CÓMO ARRANCAR
 -------------
@@ -158,7 +179,7 @@ EN LÍNEA (tickops.bid) CON LA PC COMO SERVIDOR
 
 LO QUE FALTA
 ------------
-- Siguiente para vender instalaciones: migraciones de base de datos + comando "actualizar", clave de licencia firmada,
+- Siguiente para vender instalaciones: clave de licencia firmada,
   cuenta de soporte desactivable e informe de diagnóstico, manuales y contrato; ajustar /planes a licencia perpetua +
   mantenimiento anual (pendiente de decisión del equipo).
 - Artículos FAQ (tabla articulos_faq): pantalla de consulta y edición.

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import '../styles/AdminDashboard.css'
 import ThemeSwitcher from '../../../components/ThemeSwitcher.vue'
@@ -320,10 +320,60 @@ function showDepartmentCategories(department) {
   goTo('categories')
 }
 
-function goTo(section) { activeSection.value = section; document.getElementById(section)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
+// ---------- Navegación entre módulos ----------
+// La barra de módulos siempre está a la vista (fija a la izquierda; abajo en teléfonos) y marca el módulo
+// en pantalla mientras se hace scroll. Al pulsar un módulo se desplaza hasta él.
+const SECTIONS = ['panel', 'incidents', 'new-incident', 'agents', 'departments', 'categories', 'users']
+let followScrollAfter = 0 // tras un clic, no seguir el scroll hasta que termine el desplazamiento suave
+
+function goTo(section) {
+  activeSection.value = section
+  followScrollAfter = Date.now() + 1000
+  document.getElementById(section)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+function sectionInView() {
+  // Al final de la página, el último módulo (aunque sea corto y no llegue arriba).
+  if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) return SECTIONS.at(-1)
+  let current = SECTIONS[0]
+  for (const id of SECTIONS) {
+    const top = document.getElementById(id)?.getBoundingClientRect().top
+    if (top !== undefined && top <= 140) current = id
+  }
+  return current
+}
+
+let scrollFrame = 0
+function onScroll() {
+  if (scrollFrame || Date.now() < followScrollAfter) return
+  scrollFrame = requestAnimationFrame(() => {
+    scrollFrame = 0
+    activeSection.value = sectionInView()
+  })
+}
+// Si la persona mueve la página (rueda, dedo, teclado), se vuelve a seguir el scroll de inmediato.
+const userScrolls = () => { followScrollAfter = 0 }
+const SCROLL_EVENTS = ['wheel', 'touchstart', 'keydown']
+
+// En teléfonos la barra de abajo se desliza para que el módulo marcado quede visible.
+watch(activeSection, async () => {
+  if (window.innerWidth > 760) return
+  await nextTick()
+  document.querySelector('.sidebar-nav .nav-item.active')?.scrollIntoView({ block: 'nearest', inline: 'center' })
+})
+
 async function handleLogout() { await logout(); router.push({ name: 'Landing' }) }
 
-onMounted(loadData)
+onMounted(() => {
+  loadData()
+  window.addEventListener('scroll', onScroll, { passive: true })
+  for (const name of SCROLL_EVENTS) window.addEventListener(name, userScrolls, { passive: true })
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('scroll', onScroll)
+  for (const name of SCROLL_EVENTS) window.removeEventListener(name, userScrolls)
+  cancelAnimationFrame(scrollFrame)
+})
 </script>
 
 <template>
@@ -331,7 +381,7 @@ onMounted(loadData)
     <aside class="dashboard-sidebar">
       <div class="sidebar-brand"><span class="brand-mark">T</span><div><h2>TickOps</h2><span>Administración</span></div></div>
       <AdminViewSwitcher />
-      <nav class="sidebar-nav" aria-label="Navegación de administración">
+      <nav class="sidebar-nav" aria-label="Módulos de administración">
         <button class="nav-item" :class="{ active: activeSection === 'panel' }" @click="goTo('panel')">⌂ Panel principal</button>
         <button class="nav-item" :class="{ active: activeSection === 'incidents' }" @click="goTo('incidents')">▤ Incidencias</button>
         <button class="nav-item" :class="{ active: activeSection === 'new-incident' }" @click="goTo('new-incident')">＋ Registrar incidencia</button>

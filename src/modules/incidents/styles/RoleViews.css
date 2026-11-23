@@ -27,3 +27,7 @@
 /* Adjuntos en el formulario de nueva incidencia */
 .optional-note{color:var(--role-muted);font-weight:400}
 .incident-form input[type=file]{padding:9px 10px;background:var(--role-field);font-size:12px}
+
+/* Teléfono: el título de cada incidencia ocupa su propia línea; etiquetas y botones debajo (antes se comprimía
+   palabra por palabra y las etiquetas se montaban sobre el texto). */
+@media(max-width:560px){.ticket-row{flex-wrap:wrap;gap:8px 10px}.ticket-row .ticket-main{flex:1 1 100%}}

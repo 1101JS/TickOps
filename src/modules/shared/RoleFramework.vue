@@ -62,7 +62,8 @@ async function signOut() {
 
 <style scoped>
 .role-framework{display:flex;min-height:100vh;background:var(--role-bg);color:var(--role-text);font-family:Arial,sans-serif}
-.role-sidebar{display:flex;flex:0 0 245px;flex-direction:column;padding:28px 18px;background:var(--role-card);border-right:1px solid var(--role-border)}
+/* La barra de módulos siempre está a la vista: fija a la izquierda (con scroll propio si la ventana es baja). */
+.role-sidebar{position:sticky;top:0;align-self:flex-start;display:flex;flex:0 0 245px;flex-direction:column;height:100vh;overflow-y:auto;overscroll-behavior:contain;padding:28px 18px;background:var(--role-card);border-right:1px solid var(--role-border)}
 .role-brand{display:flex;align-items:center;gap:10px;color:var(--role-text);text-decoration:none}
 .role-brand>span{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--role-primary);color:#fff;font-weight:800}
 .role-brand strong,.role-brand small{display:block}
@@ -78,5 +79,16 @@ async function signOut() {
 .view-banner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 18px;margin:0 0 22px;padding:12px 16px;border:1px solid var(--role-primary);border-radius:10px;background:var(--role-primary-soft);color:var(--role-text);font-size:13px;line-height:1.5}
 .view-banner a{flex:0 0 auto;color:var(--role-primary);font-weight:700}
 .role-content{flex:1;min-width:0;padding:40px clamp(20px,4vw,58px) 60px}
-@media(max-width:720px){.role-framework{flex-direction:column}.role-sidebar{flex-basis:auto;padding:16px;border-right:0;border-bottom:1px solid var(--role-border)}.role-label{margin:16px 0 7px}.role-navigation{flex-direction:row;flex-wrap:wrap}.role-navigation a{padding:7px 9px;font-size:12px}.role-footer{flex-direction:row;align-items:center;justify-content:space-between;padding-top:12px}.role-logout{width:auto}.role-content{padding:26px 16px 42px}}
+/* Teléfono: los módulos pasan a una barra fija abajo que se desliza de lado; logo, vista, tema y salida quedan arriba. */
+@media(max-width:720px){
+  .role-framework{flex-direction:column}
+  .role-sidebar{position:static;height:auto;overflow:visible;flex-basis:auto;align-self:stretch;padding:16px;border-right:0;border-bottom:1px solid var(--role-border)}
+  .role-label{margin:16px 0 7px}
+  .role-navigation{position:fixed;z-index:40;left:0;right:0;bottom:0;flex-direction:row;flex-wrap:nowrap;gap:4px;padding:8px 10px calc(8px + env(safe-area-inset-bottom));overflow-x:auto;scrollbar-width:none;background:var(--role-card);border-top:1px solid var(--role-border);box-shadow:0 -8px 24px rgba(15,23,42,.12)}
+  .role-navigation::-webkit-scrollbar{display:none}
+  .role-navigation a{flex:0 0 auto;padding:10px 12px;font-size:12px;white-space:nowrap}
+  .role-footer{flex-direction:row;align-items:center;justify-content:space-between;padding-top:12px}
+  .role-logout{width:auto}
+  .role-content{padding:26px 16px 96px}
+}
 </style>
