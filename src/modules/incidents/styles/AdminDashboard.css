@@ -297,3 +297,9 @@ a.text-button:hover{text-decoration:underline}
    variables --role-* que aquí no existen: los campos del panel quedaban sin borde ni fondo. Se fija el estilo del panel. */
 .dashboard .incident-form input,.dashboard .incident-form select,.dashboard .incident-form textarea,.dashboard .edit-form input,.dashboard .edit-form select,.dashboard .edit-form textarea{border:1px solid var(--dash-border);background:var(--dash-bg);color:var(--dash-text)}
 .dashboard .incident-form input:focus,.dashboard .incident-form select:focus,.dashboard .incident-form textarea:focus,.dashboard .edit-form input:focus,.dashboard .edit-form select:focus,.dashboard .edit-form textarea:focus{outline:2px solid var(--dash-primary);outline-offset:1px}
+
+/* Tema oscuro en los controles nativos: sin color-scheme, la lista desplegable de los <select> se abría blanca
+   con el texto claro del panel (ilegible). Se declara el esquema y se fija el color de las opciones. */
+.dashboard{color-scheme:light}
+:root[data-theme="dark"] .dashboard{color-scheme:dark}
+.dashboard select option,.dashboard select optgroup{background:var(--dash-card);color:var(--dash-text)}

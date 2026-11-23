@@ -121,7 +121,7 @@ onMounted(load)
         </div>
         <p v-if="selectedCategory" class="hint">{{ selectedCategory.descripcion }} · la atenderá {{ selectedCategory.departamento }}.</p>
         <label>Descripción<textarea v-model="form.descripcion" maxlength="5000" placeholder="Indica qué ocurre, dónde sucede y desde cuándo..." required /></label>
-        <label>Capturas o archivos <span class="optional-note">(opcional · hasta 5, máximo 5 MB cada uno)</span>
+        <label><span class="label-text">Capturas o archivos <span class="optional-note">(opcional · hasta 5, máximo 5 MB cada uno)</span></span>
           <input ref="fileInput" type="file" multiple :accept="acceptedTypes" @change="pickFiles" />
         </label>
         <p v-if="files.length" class="hint">{{ files.length }} archivo(s) seleccionado(s): {{ files.map((f) => f.name).join(', ') }}</p>

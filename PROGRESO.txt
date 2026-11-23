@@ -114,6 +114,10 @@ LO QUE YA ESTÁ HECHO
      Worker de Cloudflare sigue siendo "eticket" (wrangler.jsonc): cambiarlo crearía otro Worker.
    - Pruebas: test/departamentos.test.js (8). Total: 79, todas OK. Navegador sobre copia temporal (ya borrada): 16 OK.
    - Al publicar: reiniciar la API de la PC (icono TickOps); la sección necesita la ruta nueva del servidor.
+14. Ajustes visuales del panel (22-nov):
+   - Tema oscuro: las listas desplegables (<select>) se abrían blancas con texto claro (ilegible). El panel admin
+     ahora declara color-scheme (claro u oscuro según el tema) y fija el color de las opciones.
+   - "(opcional)" y notas similares van en la misma línea que su etiqueta (envueltas en <span class="label-text">).
 
 CÓMO ARRANCAR
 -------------

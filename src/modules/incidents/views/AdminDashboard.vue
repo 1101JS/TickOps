@@ -432,7 +432,7 @@ onMounted(loadData)
         <div class="section-heading"><div><p class="eyebrow">ORGANIZACIÓN</p><h2>Departamentos</h2></div><span class="section-note">Cada departamento atiende las incidencias de sus categorías con sus agentes.</span></div>
         <form class="incident-form user-form" @submit.prevent="submitDepartment"><div class="form-grid">
           <label>Nombre<input v-model="newDepartment.nombre" maxlength="80" placeholder="Ej. Infraestructura" required /></label>
-          <label class="form-full">Descripción <span class="optional">(opcional)</span><input v-model="newDepartment.descripcion" maxlength="200" placeholder="Qué atiende este departamento" /></label>
+          <label class="form-full"><span class="label-text">Descripción <span class="optional">(opcional)</span></span><input v-model="newDepartment.descripcion" maxlength="200" placeholder="Qué atiende este departamento" /></label>
         </div><button type="submit" class="primary-button">Crear departamento</button></form>
 
         <div class="incident-table-wrap"><table class="incident-table">
@@ -462,7 +462,7 @@ onMounted(loadData)
         <form class="incident-form user-form" @submit.prevent="submitCategory"><div class="form-grid">
           <label>Nombre<input v-model="newCategory.nombre" maxlength="80" placeholder="Ej. Impresoras" required /></label>
           <label>Departamento<select v-model="newCategory.idDepartamento" required><option value="">Seleccione...</option><option v-for="d in catalogs.departamentos" :key="d.id" :value="d.id">{{ d.nombre }}</option></select></label>
-          <label class="form-full">Descripción <span class="optional">(opcional; ayuda al solicitante a elegir)</span><input v-model="newCategory.descripcion" maxlength="200" placeholder="Qué tipo de problemas entran en esta categoría" /></label>
+          <label class="form-full"><span class="label-text">Descripción <span class="optional">(opcional; ayuda al solicitante a elegir)</span></span><input v-model="newCategory.descripcion" maxlength="200" placeholder="Qué tipo de problemas entran en esta categoría" /></label>
         </div><button type="submit" class="primary-button">Crear categoría</button></form>
 
         <div class="toolbar">
@@ -494,7 +494,7 @@ onMounted(loadData)
           <label>Correo<input v-model="newUser.correo" type="email" maxlength="120" autocomplete="off" required /></label>
           <label>Contraseña inicial<input v-model="newUser.password" type="password" minlength="8" autocomplete="new-password" required /></label>
           <label>Rol<select v-model="newUser.role"><option v-for="r in ROLES" :key="r.key" :value="r.key">{{ r.label }}</option></select></label>
-          <label>Departamento <span v-if="newUser.role !== 'agent'" class="optional">(opcional)</span>
+          <label><span class="label-text">Departamento <span v-if="newUser.role !== 'agent'" class="optional">(opcional)</span></span>
             <select v-model="newUser.idDepartamento" :required="newUser.role === 'agent'"><option value="">Ninguno</option><option v-for="d in catalogs.departamentos" :key="d.id" :value="d.id">{{ d.nombre }}</option></select>
           </label>
         </div><button type="submit" class="primary-button">Crear usuario</button></form>
@@ -522,7 +522,7 @@ onMounted(loadData)
         <header class="details-header"><div><span class="details-kicker">DEPARTAMENTO</span><h2>Editar {{ editingDepartment.nombre }}</h2></div><button class="details-close" @click="editingDepartment = null">×</button></header>
         <form class="edit-form" @submit.prevent="saveDepartment">
           <label>Nombre<input v-model="editingDepartment.nombre" maxlength="80" required /></label>
-          <label>Descripción <span class="optional">(opcional)</span><input v-model="editingDepartment.descripcion" maxlength="200" /></label>
+          <label><span class="label-text">Descripción <span class="optional">(opcional)</span></span><input v-model="editingDepartment.descripcion" maxlength="200" /></label>
           <footer class="details-footer"><button type="button" class="details-done secondary-button" @click="editingDepartment = null">Cancelar</button><button type="submit" class="details-done">Guardar cambios</button></footer>
         </form>
       </section>
@@ -539,7 +539,7 @@ onMounted(loadData)
             </label>
           </div>
           <p v-if="editingCategory.incidencias > 0" class="section-note">Tiene {{ editingCategory.incidencias }} incidencia(s): no se puede mover a otro departamento.</p>
-          <label>Descripción <span class="optional">(opcional)</span><input v-model="editingCategory.descripcion" maxlength="200" /></label>
+          <label><span class="label-text">Descripción <span class="optional">(opcional)</span></span><input v-model="editingCategory.descripcion" maxlength="200" /></label>
           <footer class="details-footer"><button type="button" class="details-done secondary-button" @click="editingCategory = null">Cancelar</button><button type="submit" class="details-done">Guardar cambios</button></footer>
         </form>
       </section>
@@ -555,7 +555,7 @@ onMounted(loadData)
             <label>Rol<select v-model="editingUser.role" :disabled="editingUser.id === user?.id"><option v-for="r in ROLES" :key="r.key" :value="r.key">{{ r.label }}</option></select></label>
             <label>Departamento<select v-model="editingUser.idDepartamento" :required="editingUser.role === 'agent'"><option value="">Ninguno</option><option v-for="d in catalogs.departamentos" :key="d.id" :value="d.id">{{ d.nombre }}</option></select></label>
           </div>
-          <label>Nueva contraseña <span class="optional">(déjala vacía para no cambiarla; cerrará sus sesiones abiertas)</span><input v-model="editingUser.password" type="password" minlength="8" autocomplete="new-password" /></label>
+          <label><span class="label-text">Nueva contraseña <span class="optional">(déjala vacía para no cambiarla; cerrará sus sesiones abiertas)</span></span><input v-model="editingUser.password" type="password" minlength="8" autocomplete="new-password" /></label>
           <footer class="details-footer"><button type="button" class="details-done secondary-button" @click="editingUser = null">Cancelar</button><button type="submit" class="details-done">Guardar cambios</button></footer>
         </form>
       </section>
