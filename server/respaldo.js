@@ -3,8 +3,9 @@
 //   npm run respaldo -- listar               muestra los respaldos guardados
 //   npm run descifrar-respaldo -- <archivo>  descifra un respaldo y explica cómo restaurarlo
 //   npm run respaldo -- restaurar-adjuntos   descifra los adjuntos respaldados que falten en ATTACHMENTS_DIR
+//   npm run respaldo -- subir                sube a BACKUP_REMOTE (rclone) lo que falte
 import { basename } from 'node:path'
-import { backupConfig, createBackup, decryptBackup, listBackups, pgTool, restoreAttachments } from './backup.js'
+import { backupConfig, createBackup, decryptBackup, listBackups, pgTool, restoreAttachments, uploadBackups } from './backup.js'
 
 const config = backupConfig()
 const [command, file] = process.argv.slice(2)
@@ -25,6 +26,9 @@ try {
     if (!config.dir || !config.password) throw new Error('Faltan BACKUP_DIR o BACKUP_PASSWORD en .env.')
     const restored = await restoreAttachments(config)
     console.log(`${restored} adjunto(s) restaurado(s) en ${config.attachmentsDir}`)
+  } else if (command === 'subir') {
+    const { removed } = await uploadBackups(config)
+    console.log(`Respaldos subidos a ${config.remote}${removed.length ? `; borrados en la nube: ${removed.join(', ')}` : ''}`)
   } else if (command === 'listar') {
     if (!config.dir) throw new Error('Falta BACKUP_DIR en .env.')
     const items = await listBackups(config.dir)
@@ -35,8 +39,12 @@ try {
     console.log(`Respaldo creado: ${result.path} (${Math.ceil(result.bytes / 1024)} KB)`)
     if (result.attachments) console.log(`Adjuntos nuevos respaldados: ${result.attachments}`)
     if (result.removed.length) console.log(`Borrados por antigüedad: ${result.removed.map((n) => basename(n)).join(', ')}`)
+    if (config.remote) {
+      const { removed } = await uploadBackups(config)
+      console.log(`Subido a ${config.remote}${removed.length ? `; borrados en la nube ${removed.length} antiguos` : ''}`)
+    }
   } else {
-    throw new Error(`Comando desconocido: ${command}. Usa: (nada), listar, restaurar-adjuntos o descifrar.`)
+    throw new Error(`Comando desconocido: ${command}. Usa: (nada), listar, subir, restaurar-adjuntos o descifrar.`)
   }
 } catch (error) {
   console.error(`Error: ${error.message}`)

@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import '../styles/LandingView.css'
+import ThemeSwitcher from '../../../components/ThemeSwitcher.vue'
 
 const stats = ref([0, 0, 0])
 
@@ -42,6 +43,7 @@ onMounted(() => {
         <a href="#servicio">El servicio</a>
       </nav>
 
+      <ThemeSwitcher class="landing-theme" />
       <a href="#contacto" class="help-portal">Solicitar información ↗</a>
     </header>
 

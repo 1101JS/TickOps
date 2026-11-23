@@ -47,8 +47,7 @@ LO QUE YA ESTÁ HECHO
    - Respaldo automático cifrado (análisis de riesgos de la propuesta): server/backup.js.
      pg_dump + AES-256-GCM; al arrancar TickOps y cada hora revisa si el último tiene 24 h o más; conserva 14.
      Destino actual: C:\Users\Daniel\OneDrive\Respaldos TickOps (BACKUP_DIR en .env).
-     Plan: pasar a una cuenta de Google dedicada con Google Drive para escritorio (aún no instalado) y,
-     más adelante, a un servicio de respaldo en la nube. Solo hay que cambiar BACKUP_DIR.
+     (Actualizado: ver punto 10; ahora es una carpeta local + copia en la nube con rclone.)
      La clave BACKUP_PASSWORD está en .env: GUARDARLA TAMBIÉN FUERA DE LA PC.
      Comandos: npm run respaldo | npm run respaldo -- listar | npm run descifrar-respaldo -- <archivo>.
      Probado: respaldo real de la base, descifrado y restaurado en una base temporal con los mismos
@@ -66,6 +65,18 @@ LO QUE YA ESTÁ HECHO
      con los filtros aplicados. Librerías write-excel-file y jsPDF, cargadas solo al exportar.
    - Avisos por correo: DESCARTADOS por decisión del equipo (22-nov).
    - Total de pruebas: 63 (14 de lógica, 37 de API, 4 de respaldo, 8 de adjuntos), todas OK.
+10. Limpieza y tema (22-nov):
+   - Eliminados archivos de ejemplo sin uso: UsersView.vue, IncidentHistory.vue (datos de ejemplo, sin ruta),
+     restos de la plantilla de Vite (src/assets/*, public/icons.svg, CSS #social/.counter/.hero/#center/
+     #next-steps/#docs/#spacer/.ticks en style.css) y un import sin uso en App.vue.
+   - Modo oscuro en la landing y el login con el MISMO interruptor y mecanismo que los paneles
+     (data-theme en <html>, guardado como "tickops-theme"): el tema se mantiene en todo el sitio.
+   - Corregido: el título de la llamada final de la landing ("Tu equipo necesita soporte.") salía oscuro
+     sobre fondo azul también en el tema claro.
+   - Respaldos: el OneDrive de la PC es la cuenta personal de Daniel y NO se usa para el proyecto.
+     BACKUP_DIR = C:\Users\Daniel\Respaldos TickOps (local). Una copia se sube con rclone (instalado con
+     winget) a la cuenta personal de Microsoft del proyecto: remoto "tickops", carpeta "Respaldos TickOps"
+     (BACKUP_REMOTE en .env). Credencial de rclone en %APPDATA%\rclone\rclone.conf (no compartir).
 
 CÓMO ARRANCAR
 -------------
@@ -97,12 +108,10 @@ LO QUE FALTA
 - Artículos FAQ (tabla articulos_faq): pantalla de consulta y edición.
 - Restablecer contraseña por correo (tabla tokens_restablecimiento).
 - Administrar departamentos desde el panel (hoy solo se ven; las categorías ya se administran).
-- Respaldos: instalar Google Drive para escritorio con la cuenta dedicada y cambiar BACKUP_DIR.
+- Respaldos: si más adelante se contrata un servicio de respaldo en la nube, se configura como otro remoto
+  de rclone y se cambia BACKUP_REMOTE (rclone admite S3, Backblaze, Google Drive, etc.).
 - Propuesta inicial: todo lo obligatorio y los opcionales elegidos están hechos (avisos por correo descartados).
-- UsersView.vue e IncidentHistory.vue (merge del compañero) no tienen ruta y usan datos de ejemplo:
-  integrarlos o borrarlos.
 - Landing: botón "Solicitar información" usa mailto:contacto@tickops.com (dominio incorrecto).
 - Los datos viejos de SQLite (carpeta data/) ya no se usan; se pueden borrar.
-- La landing y el login no tienen modo oscuro: se ven claros aunque el tema elegido sea oscuro.
 - El panel de Administrador usa su propio diseño (AdminDashboard.css); la ficha /incidencia/:id del
   admin usa el diseño de los portales. Unificar si se quiere el mismo aspecto.

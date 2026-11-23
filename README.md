@@ -39,9 +39,10 @@ Requisitos: Node 22.13+ y PostgreSQL con la base `sistema_incidencias` restaurad
    SESSION_SECRET=una-cadena-larga-y-aleatoria
    ALLOW_REGISTRATION=false
    # Respaldo automático (opcional; ver "Respaldos")
-   BACKUP_DIR=C:\Users\<usuario>\OneDrive\Respaldos TickOps
+   BACKUP_DIR=C:\Users\<usuario>\Respaldos TickOps
    BACKUP_PASSWORD=otra-cadena-larga-y-aleatoria
    BACKUP_KEEP=14
+   BACKUP_REMOTE=tickops:Respaldos TickOps   # copia en la nube con rclone (opcional)
    # Carpeta de adjuntos (opcional; por defecto ./adjuntos, fuera de git)
    ATTACHMENTS_DIR=
    ```
@@ -105,7 +106,11 @@ Los adjuntos (que no están dentro de la base) se copian cifrados a `BACKUP_DIR\
 para recuperarlos: `npm run respaldo -- restaurar-adjuntos`.
 
 - **Guarda `BACKUP_PASSWORD` fuera de la PC** (gestor de contraseñas): si el disco falla, sin esa clave los respaldos de la nube no sirven.
-- `BACKUP_DIR` puede ser cualquier carpeta sincronizada (OneDrive, Google Drive para escritorio, etc.); cambiar de servicio es cambiar esa línea.
+- **Copia en la nube (rclone):** si `BACKUP_REMOTE` está configurado, después de cada respaldo (y al arrancar) se suben
+  los archivos nuevos, ya cifrados, a ese destino; allí se conservan los mismos últimos `BACKUP_KEEP` respaldos de la base.
+  Si falla la conexión, se reintenta cada hora. Hoy el destino es una cuenta de OneDrive del proyecto (remoto `tickops`),
+  independiente del OneDrive personal de la PC. Para conectar la cuenta: `rclone config` (o `rclone authorize "onedrive"`).
+- `npm run respaldo -- subir` sube manualmente lo que falte.
 
 ```bash
 npm run respaldo                               # crear uno ahora

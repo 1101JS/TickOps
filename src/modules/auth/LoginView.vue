@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import './LoginView.css'
+import ThemeSwitcher from '../../components/ThemeSwitcher.vue'
 import { getAuthConfig, login, register, routeForRole } from '../../services/AuthService.js'
 
 const route = useRoute()
@@ -52,6 +53,7 @@ onMounted(async () => {
 
 <template>
   <main class="login-page">
+    <div class="login-theme"><ThemeSwitcher /></div>
     <section class="login-card">
       <div class="login-brand">
         <div class="login-logo">E</div>
@@ -100,5 +102,6 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.login-error{margin:0;color:#b42318;font-size:13px;line-height:1.5}.login-notice{margin:0;color:#166534;font-size:13px}.demo-accounts{margin:0;color:#64748b;font-size:12px;line-height:1.6}.demo-access{display:flex;flex-direction:column;gap:10px;padding:16px;border-radius:10px;background:#f1f5f9;color:#334155;font-size:14px}.demo-access p{margin:0 0 4px;line-height:1.5}.access-link{margin-top:8px;text-align:center;text-decoration:none}
+.login-error{margin:0;color:#b42318;font-size:13px;line-height:1.5}.login-notice{margin:0;color:#166534;font-size:13px}.demo-accounts{margin:0;color:#64748b;font-size:12px;line-height:1.6}.demo-access{display:flex;flex-direction:column;gap:10px;padding:16px;border-radius:10px;background:#f1f5f9;color:#334155;font-size:14px}
+:root[data-theme="dark"] .login-error{color:#fca5a5}:root[data-theme="dark"] .login-notice{color:#86efac}:root[data-theme="dark"] .demo-accounts{color:#94a3b8}:root[data-theme="dark"] .demo-access{background:#1b2740;color:#cbd5e1}.demo-access p{margin:0 0 4px;line-height:1.5}.access-link{margin-top:8px;text-align:center;text-decoration:none}
 </style>

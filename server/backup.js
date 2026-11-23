@@ -5,6 +5,9 @@
 //   BACKUP_PASSWORD  clave para cifrar/descifrar. Guárdala también FUERA de la PC: sin ella los respaldos no sirven.
 //   BACKUP_KEEP      cuántos respaldos conservar (14 por defecto); los más viejos se borran
 //   PG_BIN           carpeta de pg_dump si no está en el PATH (por defecto se busca en C:\Program Files\PostgreSQL\*\bin)
+//   BACKUP_REMOTE    (opcional) destino en la nube con rclone, p. ej. "tickops:Respaldos TickOps". Tras cada respaldo
+//                    se suben los archivos nuevos (ya cifrados) y en la nube se conservan los mismos últimos BACKUP_KEEP.
+//   RCLONE_BIN       ruta de rclone si no está en el PATH
 //
 // Formato del archivo .dump.enc: "TKBK1" + sal (16 bytes) + IV (12) + datos cifrados + etiqueta GCM (16).
 // Al descifrarlo se obtiene un volcado en formato personalizado de PostgreSQL (pg_restore).
@@ -34,8 +37,46 @@ export function backupConfig(env = process.env) {
     password: env.BACKUP_PASSWORD || '',
     keep: Math.max(1, Number(env.BACKUP_KEEP || 14)),
     pgBin: env.PG_BIN || '',
-    attachmentsDir: attachmentsDir(env)
+    attachmentsDir: attachmentsDir(env),
+    remote: env.BACKUP_REMOTE || '',
+    rcloneBin: env.RCLONE_BIN || ''
   }
+}
+
+// Busca rclone: RCLONE_BIN, el enlace que crea winget, o el PATH.
+export function rcloneTool(rcloneBin = '') {
+  if (rcloneBin) return rcloneBin
+  const winget = join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Links', 'rclone.exe')
+  return process.platform === 'win32' && existsSync(winget) ? winget : 'rclone'
+}
+
+function rclone(config, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(rcloneTool(config.rcloneBin), args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    let stdout = ''
+    let stderr = ''
+    child.stdout.on('data', (chunk) => { stdout += chunk })
+    child.stderr.on('data', (chunk) => { stderr += chunk })
+    child.on('error', (error) => reject(new Error(`No se pudo ejecutar rclone (${error.message}). Instálalo o configura RCLONE_BIN.`)))
+    child.on('close', (code) => {
+      if (code === 0) return resolve(stdout)
+      const lines = stderr.trim().split('\n').filter((line) => /ERROR|Failed|error/i.test(line))
+      reject(new Error(`rclone falló: ${(lines.pop() || stderr.trim() || `código ${code}`).slice(0, 300)}`))
+    })
+  })
+}
+
+// Sube a BACKUP_REMOTE los respaldos y adjuntos que falten (copia incremental, nunca borra adjuntos)
+// y deja en la nube solo los últimos BACKUP_KEEP respaldos de la base. Devuelve { removed }.
+export async function uploadBackups(config = backupConfig()) {
+  if (!config.remote) throw new Error('Falta BACKUP_REMOTE en .env (destino de rclone).')
+  if (!config.dir) throw new Error('Falta BACKUP_DIR en .env.')
+  await rclone(config, ['copy', config.dir, config.remote, '--include', `/${PREFIX}*${SUFFIX}`, '--include', '/adjuntos/*.enc'])
+  const remoteFiles = (await rclone(config, ['lsf', config.remote, '--files-only', '--include', `/${PREFIX}*${SUFFIX}`]))
+    .split(/\r?\n/).filter(Boolean).sort().reverse() // el nombre lleva la fecha: orden alfabético = cronológico
+  const removed = remoteFiles.slice(config.keep)
+  for (const name of removed) await rclone(config, ['deletefile', `${config.remote.replace(/\/+$/, '')}/${name}`])
+  return { removed }
 }
 
 // Busca pg_dump/pg_restore: PG_BIN, luego la versión más nueva en C:\Program Files\PostgreSQL, luego el PATH.
@@ -181,17 +222,32 @@ export function scheduleBackups(config = backupConfig(), log = console) {
   }
   let running = false
   let first = true
+  let pendingUpload = Boolean(config.remote) // al arrancar se intenta subir lo que falte
+
+  async function upload() {
+    try {
+      const { removed } = await uploadBackups(config)
+      pendingUpload = false
+      log.log(`Respaldos subidos a ${config.remote}${removed.length ? `; borrados en la nube ${removed.length} antiguos` : ''}.`)
+    } catch (error) {
+      pendingUpload = true // se reintenta en la próxima revisión (cada hora)
+      log.error(`No se pudieron subir los respaldos a la nube: ${error.message}`)
+    }
+  }
+
   async function check() {
     if (running) return
     running = true
     try {
       const [latest] = await listBackups(config.dir)
       if (latest && Date.now() - latest.mtimeMs < DAY_MS) {
-        if (first) log.log(`Respaldo automático activo (${config.dir}). Último: ${latest.name}.`)
+        if (first) log.log(`Respaldo automático activo (${config.dir}${config.remote ? ` → ${config.remote}` : ''}). Último: ${latest.name}.`)
+        if (pendingUpload) await upload()
         return
       }
       const result = await createBackup(config)
       log.log(`Respaldo creado: ${basename(result.path)} (${Math.ceil(result.bytes / 1024)} KB)${result.attachments ? `; ${result.attachments} adjunto(s) nuevos copiados` : ''}${result.removed.length ? `; borrados ${result.removed.length} antiguos` : ''}.`)
+      if (config.remote) await upload()
     } catch (error) {
       log.error(`Error en el respaldo automático: ${error.message}`)
     } finally {
