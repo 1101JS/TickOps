@@ -6,7 +6,7 @@
 // Estructura:
 //   app.js          crea la aplicación y monta middlewares y routers
 //   middleware.js   CSRF, sesión (req.user), roles, validación de JSON y manejo de errores
-//   routes/*.js     un router por recurso: auth, catalogos, incidencias (+ adjuntos), categorias, usuarios/agentes
+//   routes/*.js     un router por recurso: auth, catalogos, incidencias (+ adjuntos), categorias, departamentos, usuarios/agentes
 //   lib/*.js        lógica compartida: validación, usuarios/sesión, reglas de incidencias, cifrado
 import express from 'express'
 import { attachmentsDir } from './lib/attachments.js'
@@ -14,6 +14,7 @@ import { applyView, errorHandler, loadUser, notFound, requireJsonObject, sameOri
 import authRoutes from './routes/auth.js'
 import catalogRoutes from './routes/catalogos.js'
 import categoryRoutes from './routes/categorias.js'
+import departmentRoutes from './routes/departamentos.js'
 import incidentRoutes from './routes/incidencias.js'
 import userRoutes from './routes/usuarios.js'
 
@@ -46,6 +47,7 @@ export function createApp({ db, config }) {
   // La vista del administrador (X-Vista) solo cambia cómo se ven y gestionan las incidencias.
   api.use('/incidencias', applyView, incidentRoutes)
   api.use('/categorias', categoryRoutes)
+  api.use('/departamentos', departmentRoutes)
   api.use('/', userRoutes) // /agentes y /usuarios
   api.use(notFound)
 

@@ -35,6 +35,7 @@ export function newPassword(value) {
 
 const DUPLICATE_MESSAGES = {
   usuarios_correo_key: 'Ya existe un usuario con ese correo.',
+  departamentos_nombre_key: 'Ya existe un departamento con ese nombre.',
   uq_categoria_departamento: 'Ya existe una categoría con ese nombre en el departamento.'
 }
 

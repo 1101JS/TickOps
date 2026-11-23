@@ -288,3 +288,12 @@
   opacity: .6;
   cursor: wait;
 }
+
+/* Enlaces con aspecto de botón de texto (p. ej. "Ver como agente" en Departamentos) */
+a.text-button{display:inline-block;text-decoration:none}
+a.text-button:hover{text-decoration:underline}
+
+/* RoleViews.css (portales de agente y solicitante) se carga en todo el sitio y redefine .incident-form input con
+   variables --role-* que aquí no existen: los campos del panel quedaban sin borde ni fondo. Se fija el estilo del panel. */
+.dashboard .incident-form input,.dashboard .incident-form select,.dashboard .incident-form textarea,.dashboard .edit-form input,.dashboard .edit-form select,.dashboard .edit-form textarea{border:1px solid var(--dash-border);background:var(--dash-bg);color:var(--dash-text)}
+.dashboard .incident-form input:focus,.dashboard .incident-form select:focus,.dashboard .incident-form textarea:focus,.dashboard .edit-form input:focus,.dashboard .edit-form select:focus,.dashboard .edit-form textarea:focus{outline:2px solid var(--dash-primary);outline-offset:1px}

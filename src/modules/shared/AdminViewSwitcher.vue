@@ -1,8 +1,8 @@
 <script setup>
 // Selector de vista del administrador (barra lateral): Administrador, Agente de cada departamento o Solicitante.
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { getCatalogs } from '../../services/IncidentService.js'
+import { catalogsVersion, getCatalogs } from '../../services/IncidentService.js'
 import { currentView } from '../../services/ViewService.js'
 
 const router = useRouter()
@@ -22,9 +22,10 @@ function change(event) {
   router.push({ name: 'AgentDashboard', query: { departamento: value.split(':')[1] } })
 }
 
-onMounted(async () => {
+// Se vuelve a leer cuando cambian los catálogos (crear, renombrar o desactivar departamentos).
+watch(catalogsVersion, async () => {
   departments.value = (await getCatalogs().catch(() => ({ departamentos: [] }))).departamentos
-})
+}, { immediate: true })
 </script>
 
 <template>

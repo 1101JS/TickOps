@@ -56,7 +56,7 @@ onMounted(async () => {
     <div class="login-theme"><ThemeSwitcher /></div>
     <section class="login-card">
       <div class="login-brand">
-        <div class="login-logo">E</div>
+        <div class="login-logo">T</div>
         <h1>TickOps</h1>
         <p>Sistema de Gestión de Incidencias</p>
       </div>
@@ -96,7 +96,7 @@ onMounted(async () => {
         <p v-if="!isRegister && allowRegistration" class="demo-accounts">¿No tienes cuenta? <RouterLink to="/registro">Regístrate</RouterLink></p>
       </form>
 
-      <footer class="login-footer"><p>UTH · Sistema de Soporte Técnico</p></footer>
+      <footer class="login-footer"><p>TickOps · Sistema de Soporte Técnico</p></footer>
     </section>
   </main>
 </template>

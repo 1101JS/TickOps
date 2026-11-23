@@ -33,7 +33,7 @@ async function signOut() {
 <template>
   <main class="role-framework">
     <aside class="role-sidebar">
-      <RouterLink class="role-brand" to="/"><span>E</span><div><strong>ETicket</strong><small>{{ subtitle }}</small></div></RouterLink>
+      <RouterLink class="role-brand" to="/"><span>T</span><div><strong>TickOps</strong><small>{{ subtitle }}</small></div></RouterLink>
       <AdminViewSwitcher v-if="isAdmin" />
       <p class="role-label">{{ role }}</p>
       <nav class="role-navigation" :aria-label="`Navegación de ${role}`">

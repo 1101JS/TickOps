@@ -100,6 +100,20 @@ LO QUE YA ESTÁ HECHO
      (ya borrada): 14 comprobaciones OK.
    - IMPORTANTE al publicar: reiniciar la API de la PC (icono TickOps). Si no, el sitio nuevo habla con la API vieja
      y la vista de agente no funciona bien.
+13. Departamentos y marca TickOps (22-nov):
+   - Sección "Departamentos" en el panel del administrador y API /api/departamentos (server/routes/departamentos.js):
+     lista con categorías activas/totales, agentes activos, incidencias totales/abiertas y fecha de creación;
+     crear, editar nombre y descripción, desactivar/reactivar y eliminar. Atajos: "Categorías" (filtra la lista
+     de categorías) y "Ver como agente" (entra a la vista de agente de ese departamento).
+     Reglas: nombre único; no se desactiva con incidencias abiertas ni si es el último activo; al desactivarlo sus
+     categorías dejan de ofrecerse; uno usado (categorías, usuarios o transferencias) no se elimina, se desactiva.
+   - El selector "Ver como" se actualiza al crear, renombrar o desactivar departamentos.
+   - Corregido: RoleViews.css se carga en todo el sitio y dejaba sin borde ni fondo todos los campos de los
+     formularios del panel del administrador. Corregido en AdminDashboard.css.
+   - Marca: se quitó "UTH" y "ETicket" de login, panel y portales; todo dice TickOps con logo "T". El nombre del
+     Worker de Cloudflare sigue siendo "eticket" (wrangler.jsonc): cambiarlo crearía otro Worker.
+   - Pruebas: test/departamentos.test.js (8). Total: 79, todas OK. Navegador sobre copia temporal (ya borrada): 16 OK.
+   - Al publicar: reiniciar la API de la PC (icono TickOps); la sección necesita la ruta nueva del servidor.
 
 CÓMO ARRANCAR
 -------------
@@ -129,7 +143,7 @@ LO QUE FALTA
 ------------
 - Artículos FAQ (tabla articulos_faq): pantalla de consulta y edición.
 - Restablecer contraseña por correo (tabla tokens_restablecimiento).
-- Administrar departamentos desde el panel (hoy solo se ven; las categorías ya se administran).
+- (Hecho, punto 13) Administrar departamentos desde el panel.
 - Respaldos: si más adelante se contrata un servicio de respaldo en la nube, se configura como otro remoto
   de rclone y se cambia BACKUP_REMOTE (rclone admite S3, Backblaze, Google Drive, etc.).
 - Propuesta inicial: todo lo obligatorio y los opcionales elegidos están hechos (avisos por correo descartados).

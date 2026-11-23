@@ -1,3 +1,4 @@
+import { ref } from 'vue'
 import { api, apiUpload } from './api.js'
 
 // ---------- Formato ----------
@@ -29,8 +30,14 @@ export function initials(name) {
 // ---------- Catálogos ----------
 
 let catalogs = null
+// Sube cada vez que se recargan los catálogos a la fuerza (p. ej. tras crear un departamento),
+// para que componentes como el selector "Ver como" vuelvan a leerlos.
+export const catalogsVersion = ref(0)
 export function getCatalogs(force = false) {
-  if (!catalogs || force) catalogs = api('/catalogos').catch((error) => { catalogs = null; throw error })
+  if (!catalogs || force) {
+    catalogs = api('/catalogos').catch((error) => { catalogs = null; throw error })
+    if (force) catalogsVersion.value++
+  }
   return catalogs
 }
 
@@ -97,6 +104,26 @@ export async function createUser(user) {
 
 export async function updateUser(id, changes) {
   return (await api(`/usuarios/${id}`, { method: 'PATCH', body: changes })).usuario
+}
+
+// ---------- Departamentos (administración) ----------
+
+export async function getDepartments() {
+  return (await api('/departamentos')).departamentos
+}
+
+// department: { nombre, descripcion }
+export async function createDepartment(department) {
+  return (await api('/departamentos', { method: 'POST', body: department })).departamento
+}
+
+// changes: { nombre?, descripcion?, activo? }
+export async function updateDepartment(id, changes) {
+  return (await api(`/departamentos/${id}`, { method: 'PATCH', body: changes })).departamento
+}
+
+export async function deleteDepartment(id) {
+  await api(`/departamentos/${id}`, { method: 'DELETE' })
 }
 
 // ---------- Categorías (administración) ----------

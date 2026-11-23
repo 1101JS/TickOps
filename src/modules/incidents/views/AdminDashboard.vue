@@ -7,8 +7,8 @@ import AdminViewSwitcher from '../../shared/AdminViewSwitcher.vue'
 import { getSession, logout } from '../../../services/AuthService.js'
 import { exportIncidentsToExcel, exportIncidentsToPdf } from '../../../services/ExportService.js'
 import {
-  categoriesByDepartment, createCategory, createIncident, createUser, deleteCategory, formatDate, getAgents, getCatalogs,
-  getCategories, getIncidents, getUsers, initials, slug, updateCategory, updateUser
+  categoriesByDepartment, createCategory, createDepartment, createIncident, createUser, deleteCategory, deleteDepartment, formatDate, getAgents,
+  getCatalogs, getCategories, getDepartments, getIncidents, getUsers, initials, slug, updateCategory, updateDepartment, updateUser
 } from '../../../services/IncidentService.js'
 
 const ROLES = [
@@ -24,6 +24,7 @@ const incidents = ref([])
 const agents = ref([])
 const users = ref([])
 const categories = ref([])
+const departments = ref([])
 const activeSection = ref('panel')
 const notice = ref('')
 const error = ref('')
@@ -41,6 +42,9 @@ const newIncident = ref(emptyIncident())
 const emptyUser = () => ({ nombre: '', correo: '', password: '', role: 'applicant', idDepartamento: '' })
 const newUser = ref(emptyUser())
 const editingUser = ref(null)
+const emptyDepartment = () => ({ nombre: '', descripcion: '' })
+const newDepartment = ref(emptyDepartment())
+const editingDepartment = ref(null)
 const emptyCategory = () => ({ nombre: '', descripcion: '', idDepartamento: '' })
 const newCategory = ref(emptyCategory())
 const editingCategory = ref(null)
@@ -140,12 +144,15 @@ function fail(err) { notice.value = ''; error.value = err.message || 'Ocurrió u
 
 async function loadData() {
   try {
-    const [catalog, incidentList, agentList, userList, categoryList] = await Promise.all([getCatalogs(), getIncidents(), getAgents(), getUsers(), getCategories()])
+    const [catalog, incidentList, agentList, userList, categoryList, departmentList] = await Promise.all([
+      getCatalogs(), getIncidents(), getAgents(), getUsers(), getCategories(), getDepartments()
+    ])
     catalogs.value = catalog
     incidents.value = incidentList
     agents.value = agentList
     users.value = userList
     categories.value = categoryList
+    departments.value = departmentList
     if (!newIncident.value.idPrioridad) newIncident.value = emptyIncident()
   } catch (err) { fail(err) }
 }
@@ -261,6 +268,58 @@ async function removeCategory(category) {
   } catch (err) { fail(err) }
 }
 
+// ---------- Departamentos ----------
+// Un cambio de departamento afecta catálogos, categorías, agentes e incidencias (nombres y opciones): se recarga todo.
+async function afterDepartmentChange(message) {
+  await getCatalogs(true).catch(() => {})
+  await loadData()
+  show(message)
+}
+
+async function submitDepartment() {
+  try {
+    const created = await createDepartment({ ...newDepartment.value })
+    newDepartment.value = emptyDepartment()
+    await afterDepartmentChange(`Departamento "${created.nombre}" creado. Agrégale categorías y agentes para que pueda recibir incidencias.`)
+  } catch (err) { fail(err) }
+}
+
+function openDepartmentEditor(department) {
+  editingDepartment.value = { id: department.id, nombre: department.nombre, descripcion: department.descripcion || '' }
+}
+
+async function saveDepartment() {
+  const draft = editingDepartment.value
+  try {
+    const updated = await updateDepartment(draft.id, { nombre: draft.nombre, descripcion: draft.descripcion })
+    editingDepartment.value = null
+    await afterDepartmentChange(`Departamento "${updated.nombre}" actualizado.`)
+  } catch (err) { fail(err) }
+}
+
+async function toggleDepartment(department) {
+  try {
+    const updated = await updateDepartment(department.id, { activo: !department.activo })
+    const agentsNote = updated.agentes ? ` Sus ${updated.agentes} agente(s) siguen activos: reasígnalos en Usuarios si es necesario.` : ''
+    await afterDepartmentChange(updated.activo
+      ? `Departamento "${updated.nombre}" reactivado.`
+      : `Departamento "${updated.nombre}" desactivado: sus categorías ya no se ofrecen en incidencias nuevas.${agentsNote}`)
+  } catch (err) { fail(err) }
+}
+
+async function removeDepartment(department) {
+  if (!window.confirm(`¿Eliminar el departamento "${department.nombre}"? Esta acción no se puede deshacer.`)) return
+  try {
+    await deleteDepartment(department.id)
+    await afterDepartmentChange(`Departamento "${department.nombre}" eliminado.`)
+  } catch (err) { fail(err) }
+}
+
+function showDepartmentCategories(department) {
+  categoryDepartment.value = department.activo ? department.id : ''
+  goTo('categories')
+}
+
 function goTo(section) { activeSection.value = section; document.getElementById(section)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
 async function handleLogout() { await logout(); router.push({ name: 'Landing' }) }
 
@@ -270,13 +329,14 @@ onMounted(loadData)
 <template>
   <main class="dashboard admin-dashboard">
     <aside class="dashboard-sidebar">
-      <div class="sidebar-brand"><span class="brand-mark">E</span><div><h2>ETicket</h2><span>Administración · UTH</span></div></div>
+      <div class="sidebar-brand"><span class="brand-mark">T</span><div><h2>TickOps</h2><span>Administración</span></div></div>
       <AdminViewSwitcher />
       <nav class="sidebar-nav" aria-label="Navegación de administración">
         <button class="nav-item" :class="{ active: activeSection === 'panel' }" @click="goTo('panel')">⌂ Panel principal</button>
         <button class="nav-item" :class="{ active: activeSection === 'incidents' }" @click="goTo('incidents')">▤ Incidencias</button>
         <button class="nav-item" :class="{ active: activeSection === 'new-incident' }" @click="goTo('new-incident')">＋ Registrar incidencia</button>
         <button class="nav-item" :class="{ active: activeSection === 'agents' }" @click="goTo('agents')">♙ Agentes</button>
+        <button class="nav-item" :class="{ active: activeSection === 'departments' }" @click="goTo('departments')">◫ Departamentos</button>
         <button class="nav-item" :class="{ active: activeSection === 'categories' }" @click="goTo('categories')">▦ Categorías</button>
         <button class="nav-item" :class="{ active: activeSection === 'users' }" @click="goTo('users')">⚙ Usuarios</button>
       </nav>
@@ -368,6 +428,35 @@ onMounted(loadData)
         </div>
       </section>
 
+      <section id="departments" class="card section-anchor">
+        <div class="section-heading"><div><p class="eyebrow">ORGANIZACIÓN</p><h2>Departamentos</h2></div><span class="section-note">Cada departamento atiende las incidencias de sus categorías con sus agentes.</span></div>
+        <form class="incident-form user-form" @submit.prevent="submitDepartment"><div class="form-grid">
+          <label>Nombre<input v-model="newDepartment.nombre" maxlength="80" placeholder="Ej. Infraestructura" required /></label>
+          <label class="form-full">Descripción <span class="optional">(opcional)</span><input v-model="newDepartment.descripcion" maxlength="200" placeholder="Qué atiende este departamento" /></label>
+        </div><button type="submit" class="primary-button">Crear departamento</button></form>
+
+        <div class="incident-table-wrap"><table class="incident-table">
+          <thead><tr><th>Departamento</th><th>Categorías</th><th>Agentes</th><th>Incidencias</th><th>Estado</th><th></th></tr></thead>
+          <tbody>
+            <tr v-for="d in departments" :key="d.id" :class="{ inactive: !d.activo }">
+              <td><strong>{{ d.nombre }}</strong><small>{{ d.descripcion || 'Sin descripción' }} · desde {{ formatDate(d.fechaCreacion) }}</small></td>
+              <td><strong>{{ d.categoriasActivas }}</strong><small>{{ d.categorias === d.categoriasActivas ? 'activas' : `activas de ${d.categorias}` }}</small></td>
+              <td><strong :class="{ 'danger-text': d.activo && !d.agentes }">{{ d.agentes }}</strong><small>{{ d.activo && !d.agentes ? 'sin agentes' : 'activos' }}</small></td>
+              <td><strong>{{ d.incidencias }}</strong><small>{{ d.abiertas }} abierta(s)</small></td>
+              <td><span class="status-pill" :class="d.activo ? 'resuelto' : 'cerrado'">{{ d.activo ? 'Activo' : 'Inactivo' }}</span></td>
+              <td class="table-actions">
+                <button class="text-button" @click="openDepartmentEditor(d)">Editar</button>
+                <button class="text-button" @click="showDepartmentCategories(d)">Categorías</button>
+                <RouterLink v-if="d.activo" class="text-button" :to="{ name: 'AgentDashboard', query: { departamento: d.id } }">Ver como agente</RouterLink>
+                <button class="text-button" @click="toggleDepartment(d)">{{ d.activo ? 'Desactivar' : 'Reactivar' }}</button>
+                <button v-if="!d.enUso" class="text-button danger-text" @click="removeDepartment(d)">Eliminar</button>
+              </td>
+            </tr>
+            <tr v-if="!departments.length"><td colspan="6" class="empty-state">No hay departamentos registrados.</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
       <section id="categories" class="card section-anchor">
         <div class="section-heading"><div><p class="eyebrow">CLASIFICACIÓN</p><h2>Categorías</h2></div><span class="section-note">La categoría decide qué departamento atiende cada incidencia.</span></div>
         <form class="incident-form user-form" @submit.prevent="submitCategory"><div class="form-grid">
@@ -427,6 +516,17 @@ onMounted(loadData)
         </table></div>
       </section>
     </section>
+
+    <div v-if="editingDepartment" class="details-backdrop" @click.self="editingDepartment = null">
+      <section class="details-panel" role="dialog" aria-modal="true" aria-label="Editar departamento">
+        <header class="details-header"><div><span class="details-kicker">DEPARTAMENTO</span><h2>Editar {{ editingDepartment.nombre }}</h2></div><button class="details-close" @click="editingDepartment = null">×</button></header>
+        <form class="edit-form" @submit.prevent="saveDepartment">
+          <label>Nombre<input v-model="editingDepartment.nombre" maxlength="80" required /></label>
+          <label>Descripción <span class="optional">(opcional)</span><input v-model="editingDepartment.descripcion" maxlength="200" /></label>
+          <footer class="details-footer"><button type="button" class="details-done secondary-button" @click="editingDepartment = null">Cancelar</button><button type="submit" class="details-done">Guardar cambios</button></footer>
+        </form>
+      </section>
+    </div>
 
     <div v-if="editingCategory" class="details-backdrop" @click.self="editingCategory = null">
       <section class="details-panel" role="dialog" aria-modal="true" aria-label="Editar categoría">
