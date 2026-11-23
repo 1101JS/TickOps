@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 import express from 'express'
 import { createApp, readConfig } from './app.js'
 import { scheduleBackups } from './backup.js'
+import { status as migrationStatus } from './lib/migrations.js'
 import { createDb } from './db.js'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -51,6 +52,11 @@ app.listen(port, host, async () => {
     )
     console.log(`Base de datos: PostgreSQL "${info.base}" en ${process.env.PGHOST || 'localhost'}:${process.env.PGPORT || 5432}`)
     if (info.admins === 0) console.log('Aviso: no hay ningún administrador activo. Créalo con: npm run crear-admin')
+    // El servidor no migra solo (se hace con respaldo previo: npm run actualizar), pero avisa si falta.
+    await migrationStatus().then((migrations) => {
+      if (migrations.pendientes.length) console.log(`AVISO: la base tiene ${migrations.pendientes.length} migración(es) pendiente(s); algunas funciones pueden fallar. Ejecuta: npm run actualizar`)
+      if (migrations.desconocidas.length) console.log('AVISO: la base es de una versión más nueva de TickOps que este código. Actualiza el código.')
+    }, (error) => console.log(`AVISO: no se pudo revisar las migraciones (${error.message}).`))
   } catch (error) {
     console.error(`Error: no se pudo conectar a PostgreSQL (${error.message}). Revisa los datos PG* del archivo .env.`)
   }

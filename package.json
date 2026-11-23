@@ -12,7 +12,9 @@
     "lan": "node --env-file-if-exists=.env server/node.js",
     "crear-admin": "node --env-file-if-exists=.env server/crear-admin.js",
     "instalar": "node --env-file-if-exists=.env server/instalar.js",
-    "exportar-esquema": "node --env-file-if-exists=.env server/exportar-esquema.js",
+    "migrar": "node --env-file-if-exists=.env server/migrar.js",
+    "actualizar": "node --env-file-if-exists=.env server/actualizar.js",
+    "comprobar-esquema": "node --env-file-if-exists=.env server/comprobar-esquema.js",
     "test": "node --env-file-if-exists=.env --test --test-concurrency=1 \"test/*.test.js\"",
     "respaldo": "node --env-file-if-exists=.env server/respaldo.js",
     "descifrar-respaldo": "node --env-file-if-exists=.env server/respaldo.js descifrar"

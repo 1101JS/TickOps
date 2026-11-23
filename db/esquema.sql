@@ -1,6 +1,6 @@
--- Esquema de la base de datos de TickOps: tablas, funciones, triggers e índices, sin datos.
--- Generado con "npm run exportar-esquema" a partir de la base de desarrollo. No editar a mano:
--- los cambios se hacen en la base y se vuelve a exportar. Lo instala "npm run instalar".
+-- Esquema BASE de la base de datos de TickOps: tablas, funciones, triggers e índices, sin datos.
+-- Congelado: NO se edita. Los cambios de estructura van en db/migraciones/ (ver README, "Migraciones").
+-- Lo instala "npm run instalar", que después aplica todas las migraciones.
 
 --
 -- PostgreSQL database dump

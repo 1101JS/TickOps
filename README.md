@@ -20,10 +20,14 @@ server/             Backend Node.js + Express
   node.js         Servidor local: API Express + frontend compilado (dist/) + respaldo automático
   crear-admin.js  Crea un administrador desde la consola
   instalar.js     Instalación en un servidor nuevo: .env, base de datos y primer administrador
-  exportar-esquema.js  Regenera db/esquema.sql desde la base de desarrollo
+  migrar.js       Aplica las migraciones pendientes (npm run migrar)
+  actualizar.js   Actualiza un servidor: respaldo + dependencias + migraciones + compilación
+  comprobar-esquema.js  Compara la base de desarrollo con una instalación nueva
   lib/install.js  Crea la base y carga los archivos de db/ (lo usan instalar.js y las pruebas)
+  lib/migrations.js  Motor de migraciones (db/migraciones, tabla esquema_migraciones)
   worker.js       Cloudflare (tickops.bid): sirve el sitio y reenvía /api al túnel de la PC
-db/                 esquema.sql (estructura), catalogos.sql (roles, estados, prioridades), plantilla.sql (ejemplos)
+db/                 esquema.sql + catalogos.sql (versión base, congelada), migraciones/ (cambios posteriores),
+                    plantilla.sql (departamentos y categorías de ejemplo)
 test/               Pruebas automáticas (npm test)
 iniciar-tickops.bat  Arranca todo en la PC (PostgreSQL + túnel + API); hay un acceso directo en el escritorio
 ```
@@ -45,8 +49,9 @@ npm run lan        # http://localhost:3000 (y http://<ip-del-equipo>:3000 en la 
 
 1. Si no hay `.env`, pide los datos de PostgreSQL y lo crea con `SESSION_SECRET` y `BACKUP_PASSWORD` generados al azar
    (la clave de respaldo se muestra una vez: guárdala fuera del equipo).
-2. Crea la base (`PGDATABASE`) y carga `db/esquema.sql` + `db/catalogos.sql` en una sola transacción. Pregunta si
-   cargar `db/plantilla.sql` (4 departamentos y 7 categorías de ejemplo); sin ella, el admin crea los suyos.
+2. Crea la base (`PGDATABASE`), carga `db/esquema.sql` + `db/catalogos.sql` en una sola transacción y aplica todas
+   las migraciones de `db/migraciones/`. Pregunta si cargar `db/plantilla.sql` (4 departamentos y 7 categorías de
+   ejemplo); sin ella, el admin crea los suyos.
 3. Crea el primer administrador.
 
 **Nunca instala sobre una base que ya tenga tablas**, así que no puede borrar ni mezclar información existente.
@@ -54,17 +59,30 @@ Opciones: `npm run instalar -- --con-plantilla | --sin-plantilla | --sin-admin`.
 
 Si se pierde la contraseña del administrador: `npm run crear-admin` crea otro desde la consola del servidor.
 
-### Cambios en la estructura de la base
+### Migraciones y actualizaciones
 
-`db/esquema.sql` se genera desde la base de desarrollo; no se edita a mano.
+`db/esquema.sql` y `db/catalogos.sql` son la **versión base congelada**: no se editan. Todo cambio posterior de la
+base va como archivo numerado en `db/migraciones/` (reglas en `db/migraciones/LEEME.md`). La tabla
+`esquema_migraciones` registra cuáles se aplicaron, con una huella de cada archivo.
 
 ```bash
-npm run exportar-esquema                  # vuelve a escribir db/esquema.sql
-npm run exportar-esquema -- --comprobar   # avisa si db/esquema.sql quedó desactualizado
+npm run migrar                 # aplica las migraciones pendientes a PGDATABASE
+npm run migrar -- --estado     # muestra aplicadas y pendientes (no cambia nada)
+npm run comprobar-esquema      # ¿tu base = instalación nueva (base + migraciones)? Detecta cambios hechos a mano
 ```
 
-Los catálogos (`db/catalogos.sql`) y la plantilla (`db/plantilla.sql`) se mantienen a mano. El código busca roles y
-estados por nombre: no cambies esos nombres sin cambiar también el servidor.
+**Actualizar el servidor de un cliente** (con el código nuevo ya copiado):
+
+```bash
+npm run actualizar             # respaldo cifrado → npm install → migraciones → npm run build
+```
+
+Después hay que reiniciar TickOps. Si no hay respaldo configurado, pregunta antes de seguir
+(`--sin-respaldo` para no preguntar; también `--sin-dependencias` y `--sin-compilar`).
+
+Garantías: cada migración corre en su propia transacción (si falla, la base queda como antes de ella y no se aplican
+las siguientes); dos procesos no pueden migrar a la vez; se detiene si una migración ya aplicada fue editada o si la
+base es de una versión más nueva que el código. Al arrancar, el servidor avisa si hay migraciones pendientes.
 
 ### Variables de `.env`
 
@@ -122,6 +140,8 @@ Usa el ejecutor de pruebas integrado de Node (`node:test`), sin dependencias ext
 - `test/departamentos.test.js`: administración de departamentos y sus reglas.
 - `test/instalar.test.js`: instalación desde `db/` (base nueva, plantilla opcional, `.env` generado, protección de
   bases existentes y el comando `npm run instalar` completo).
+- `test/migraciones.test.js`: orden, registro, reversión de una migración que falla, archivos editados, base más
+  nueva que el código y `npm run actualizar`.
 
 Cada archivo crea una base temporal **con el mismo instalador que usan los clientes** (archivos de `db/`), sin leer
 la base real, y la borra al terminar. Así cada `npm test` comprueba también que `db/` instala un sistema que funciona.
