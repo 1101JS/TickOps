@@ -7,6 +7,7 @@ import AdminViewSwitcher from '../../shared/AdminViewSwitcher.vue'
 import AppModal from '../../shared/AppModal.vue'
 import StatusFilterCards from '../../shared/StatusFilterCards.vue'
 import NewIncidentForm from '../components/NewIncidentForm.vue'
+import StatsPanel from '../components/StatsPanel.vue'
 import { getSession, logout } from '../../../services/AuthService.js'
 import { exportIncidentsToExcel, exportIncidentsToPdf } from '../../../services/ExportService.js'
 import {
@@ -343,7 +344,8 @@ const SECTIONS = [
   { key: 'agents', icon: '♙', label: 'Agentes' },
   { key: 'departments', icon: '◫', label: 'Departamentos' },
   { key: 'categories', icon: '▦', label: 'Categorías' },
-  { key: 'users', icon: '⚙', label: 'Usuarios' }
+  { key: 'users', icon: '⚙', label: 'Usuarios' },
+  { key: 'stats', icon: '▥', label: 'Estadísticas' }
 ]
 const activeSection = computed(() => {
   const key = route.hash.slice(1)
@@ -433,6 +435,9 @@ onMounted(loadData)
           </ul>
         </section>
       </template>
+
+      <!-- ---------- Estadísticas ---------- -->
+      <StatsPanel v-else-if="activeSection === 'stats'" />
 
       <!-- ---------- Incidencias ---------- -->
       <template v-else-if="activeSection === 'incidents'">

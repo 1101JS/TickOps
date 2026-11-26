@@ -70,8 +70,30 @@ export async function updateIncident(id, changes) {
   return (await api(`/incidencias/${id}`, { method: 'PATCH', body: changes })).incidencia
 }
 
-export async function addComment(id, { contenido, esInterno = false, esResolucion = false }) {
-  return (await api(`/incidencias/${id}/comentarios`, { method: 'POST', body: { contenido, esInterno, esResolucion } })).incidencia
+// imagenes: lista opcional de File (png, jpg, gif, webp); con imágenes se envía como multipart.
+export async function addComment(id, { contenido, esInterno = false, esResolucion = false, imagenes = [] }) {
+  if (!imagenes.length) {
+    return (await api(`/incidencias/${id}/comentarios`, { method: 'POST', body: { contenido, esInterno, esResolucion } })).incidencia
+  }
+  const form = new FormData()
+  form.append('contenido', contenido)
+  form.append('esInterno', String(esInterno))
+  form.append('esResolucion', String(esResolucion))
+  for (const file of imagenes) form.append('imagenes', file)
+  return (await apiUpload(`/incidencias/${id}/comentarios`, form)).incidencia
+}
+
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp']
+
+export function checkImages(files) {
+  if (files.length > 5) return 'Puedes agregar hasta 5 imágenes por comentario.'
+  for (const file of files) {
+    const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
+    if (!IMAGE_EXTENSIONS.includes(extension)) return `"${file.name}": solo se aceptan imágenes (${IMAGE_EXTENSIONS.join(', ')}).`
+    if (file.size > 5 * 1024 * 1024) return `"${file.name}" supera el máximo de 5 MB.`
+    if (!file.size) return `"${file.name}" está vacío.`
+  }
+  return ''
 }
 
 // Devuelve la incidencia actualizada, o null si el usuario ya no puede verla (pasó a otro departamento).
@@ -165,6 +187,16 @@ export async function updateCategory(id, changes) {
 
 export async function deleteCategory(id) {
   await api(`/categorias/${id}`, { method: 'DELETE' })
+}
+
+// ---------- Estadísticas (solo administrador) ----------
+
+// filtros: { desde, hasta (AAAA-MM-DD), agrupar: 'agente'|'departamento'|'categoria'|'prioridad', periodo: 'dia'|'semana'|'mes',
+//            idDepartamento?, idAgente?, idCategoria?, idPrioridad? }
+export async function getStatistics(filtros = {}) {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(filtros)) if (value !== '' && value != null) params.set(key, value)
+  return api(`/estadisticas?${params}`)
 }
 
 // ---------- Adjuntos ----------

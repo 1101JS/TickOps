@@ -15,6 +15,7 @@ import authRoutes from './routes/auth.js'
 import catalogRoutes from './routes/catalogos.js'
 import categoryRoutes from './routes/categorias.js'
 import departmentRoutes from './routes/departamentos.js'
+import statsRoutes from './routes/estadisticas.js'
 import incidentRoutes from './routes/incidencias.js'
 import userRoutes from './routes/usuarios.js'
 
@@ -48,6 +49,7 @@ export function createApp({ db, config }) {
   api.use('/incidencias', applyView, incidentRoutes)
   api.use('/categorias', categoryRoutes)
   api.use('/departamentos', departmentRoutes)
+  api.use('/estadisticas', statsRoutes)
   api.use('/', userRoutes) // /agentes y /usuarios
   api.use(notFound)
 

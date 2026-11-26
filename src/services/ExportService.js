@@ -78,3 +78,31 @@ export async function exportIncidentsToPdf(incidents, { filters = '', summary = 
   if (!incidents.length) doc.setFontSize(10).setTextColor(100, 116, 139).text('No hay incidencias con los filtros aplicados.', 40, 130)
   download(doc.output('blob'), `incidencias_${fileStamp()}.pdf`)
 }
+
+// Hoja estadística a Excel. rows: [{ nombre, a, b }] como arma StatsPanel; b solo existe al comparar dos rangos.
+export async function exportStatisticsToExcel({ groupLabel, rows, totals, previousTotals = null, rangeLabel, previousRangeLabel = '' }) {
+  const { default: writeExcelFile } = await import('write-excel-file/universal')
+  const compare = Boolean(previousTotals)
+  const titles = [groupLabel, 'Resueltas', ...(compare ? ['Resueltas (comparado)', 'Diferencia'] : []), 'Creadas', '% en SLA', 'Horas prom. resolución', 'Abiertas ahora']
+  const num = (value) => ({ value: value ?? '', type: typeof value === 'number' ? Number : String })
+  const line = (name, a, b) => [
+    { value: name, type: String },
+    num(a?.resueltas ?? 0),
+    ...(compare ? [num(b?.resueltas ?? 0), num((a?.resueltas ?? 0) - (b?.resueltas ?? 0))] : []),
+    num(a?.creadas ?? 0),
+    num(a?.porcentajeEnTiempo),
+    num(a?.horasPromedio),
+    num(a?.abiertas ?? b?.abiertas ?? 0)
+  ]
+  const span = titles.length
+  const sheetData = [
+    [{ value: 'Estadísticas de incidencias · TickOps', fontWeight: 'bold', columnSpan: span }],
+    [{ value: `Generado: ${formatDateTime(new Date())} · Rango: ${rangeLabel}${compare ? ` · Comparado con: ${previousRangeLabel}` : ''}`, columnSpan: span }],
+    [null],
+    titles.map((title) => ({ value: title, fontWeight: 'bold', backgroundColor: '#DBEAFE' })),
+    ...rows.map((row) => line(row.nombre, row.a, row.b)),
+    line('TOTAL', { ...totals, abiertas: totals.abiertas }, previousTotals)
+  ].map((row, index, all) => (index === all.length - 1 ? row.map((cell) => ({ ...cell, fontWeight: 'bold' })) : row))
+  const blob = await writeExcelFile(sheetData, { sheet: 'Estadísticas', columns: titles.map((_, i) => ({ width: i === 0 ? 34 : 16 })), stickyRowsCount: 4 }).toBlob()
+  download(blob, `estadisticas_${fileStamp()}.xlsx`)
+}
