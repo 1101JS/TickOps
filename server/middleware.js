@@ -66,10 +66,10 @@ export function requireRole(roles) {
 }
 
 // POST/PATCH/PUT deben enviar un objeto JSON (express.json() ya lo convirtió en req.body).
-// Excepción: la subida de adjuntos llega como multipart/form-data y la procesa multer en su router.
+// Excepción: la subida de adjuntos y los comentarios con imágenes llegan como multipart/form-data y los procesa multer en su router.
 export function requireJsonObject(req, res, next) {
   if (!['POST', 'PATCH', 'PUT'].includes(req.method) || req.path === '/auth/logout') return next()
-  if (req.is('multipart/form-data') && /^\/incidencias\/\d+\/adjuntos$/.test(req.path)) return next()
+  if (req.is('multipart/form-data') && /^\/incidencias\/\d+\/(adjuntos|comentarios)$/.test(req.path)) return next()
   if (!req.is('application/json')) throw new HttpError(415, 'Se esperaba un cuerpo JSON.')
   if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) throw new HttpError(400, 'Se esperaba un objeto JSON.')
   next()

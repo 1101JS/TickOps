@@ -1,5 +1,7 @@
 // /api/incidencias: listado, detalle, alta, cambios, comentarios y transferencias.
 import { Router } from 'express'
+import multer from 'multer'
+import { MAX_BYTES, MAX_FILES_PER_INCIDENT, MAX_FILES_PER_UPLOAD, removeFile, storeFile, validateImage } from '../lib/attachments.js'
 import { HttpError, intId, text } from '../lib/http.js'
 import {
   INCIDENT_SELECT, activeCategory, allowedTargets, canManage, estadoId, findIncident, incidentDetail, incidentScope, priority,
@@ -165,28 +167,56 @@ router.patch('/:id', requireRole(ALL), async (req, res) => {
   return res.json({ incidencia: await incidentDetail(db, user, id) })
 })
 
-router.post('/:id/comentarios', requireRole(ALL), async (req, res) => {
-  const { db } = req.app.locals
-  const { user, body, params } = req
+// Acepta JSON ({ contenido, esInterno, esResolucion }) o multipart/form-data con los mismos campos y hasta 5 "imagenes".
+const commentUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_BYTES, files: MAX_FILES_PER_UPLOAD } })
+const flag = (value) => value === true || value === 'true'
+
+router.post('/:id/comentarios', requireRole(ALL), commentUpload.array('imagenes', MAX_FILES_PER_UPLOAD), async (req, res) => {
+  const { db, config } = req.app.locals
+  const { user, params } = req
+  const body = req.body || {}
   const id = Number(params.id)
   const contenido = text(body.contenido, 'comentario', { max: 5000 })
-  await db.tx(async (tx) => {
-    const row = await findIncident(tx, user, id, { lock: true })
-    const manager = canManage(user, row)
-    if (row.es_estado_final) throw new HttpError(409, `La incidencia está en estado ${row.estado} y es de solo lectura.`)
-    const esInterno = body.esInterno === true
-    const esResolucion = body.esResolucion === true
-    if ((esInterno || esResolucion) && !manager) throw new HttpError(403, 'Solo el equipo de soporte puede agregar notas internas o de resolución.')
-    if (esInterno && esResolucion) throw new HttpError(400, 'Un comentario de resolución no puede ser interno.')
+  const images = (req.files || []).map((file) => ({ file, ...validateImage(file) }))
+  const stored = []
+  try {
+    await db.tx(async (tx) => {
+      const row = await findIncident(tx, user, id, { lock: true })
+      const manager = canManage(user, row)
+      if (row.es_estado_final) throw new HttpError(409, `La incidencia está en estado ${row.estado} y es de solo lectura.`)
+      const esInterno = flag(body.esInterno)
+      const esResolucion = flag(body.esResolucion)
+      if ((esInterno || esResolucion) && !manager) throw new HttpError(403, 'Solo el equipo de soporte puede agregar notas internas o de resolución.')
+      if (esInterno && esResolucion) throw new HttpError(400, 'Un comentario de resolución no puede ser interno.')
+      if (images.length) {
+        const { total } = await tx.first('SELECT COUNT(*) AS total FROM adjuntos WHERE id_incidencia = $1', [id])
+        if (total + images.length > MAX_FILES_PER_INCIDENT) {
+          throw new HttpError(409, `Una incidencia admite hasta ${MAX_FILES_PER_INCIDENT} adjuntos (ya tiene ${total}).`)
+        }
+      }
 
-    await tx.run(
-      'INSERT INTO comentarios (id_incidencia, id_usuario, contenido, es_interno, es_resolucion) VALUES ($1, $2, $3, $4, $5)',
-      [id, user.id, contenido, esInterno, esResolucion]
-    )
-    if (manager && !esInterno && !row.fecha_primera_respuesta) {
-      await tx.run('UPDATE incidencias SET fecha_primera_respuesta = CURRENT_TIMESTAMP WHERE id_incidencia = $1', [id])
-    }
-  })
+      const { rows: [comment] } = await tx.run(
+        'INSERT INTO comentarios (id_incidencia, id_usuario, contenido, es_interno, es_resolucion) VALUES ($1, $2, $3, $4, $5) RETURNING id_comentario',
+        [id, user.id, contenido, esInterno, esResolucion]
+      )
+      for (const item of images) {
+        const ruta = await storeFile(config.attachmentsDir, item.file.buffer, item.extension)
+        stored.push(ruta)
+        await tx.run(
+          `INSERT INTO adjuntos (id_incidencia, id_usuario, id_comentario, nombre_archivo, ruta_almacenamiento, tipo_mime, tamano_bytes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [id, user.id, comment.id_comentario, item.nombre, ruta, item.mime, item.file.size]
+        )
+      }
+      if (manager && !esInterno && !row.fecha_primera_respuesta) {
+        await tx.run('UPDATE incidencias SET fecha_primera_respuesta = CURRENT_TIMESTAMP WHERE id_incidencia = $1', [id])
+      }
+    })
+  } catch (error) {
+    // Si algo falló, no se dejan imágenes huérfanas en disco.
+    await Promise.all(stored.map((ruta) => removeFile(config.attachmentsDir, ruta).catch(() => {})))
+    throw error
+  }
   return res.status(201).json({ incidencia: await incidentDetail(db, user, id) })
 })
 

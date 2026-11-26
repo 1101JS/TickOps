@@ -9,7 +9,7 @@ import {
   MAX_BYTES, MAX_FILES_PER_INCIDENT, MAX_FILES_PER_UPLOAD, filePath, isInline, removeFile, storeFile, validateFile
 } from '../lib/attachments.js'
 import { HttpError } from '../lib/http.js'
-import { findIncident, incidentDetail } from '../lib/incidents.js'
+import { canManage, findIncident, incidentDetail } from '../lib/incidents.js'
 import { ALL, numericId, requireRole } from '../middleware.js'
 
 const router = Router({ mergeParams: true })
@@ -62,8 +62,13 @@ router.post('/', upload.array('archivos', MAX_FILES_PER_UPLOAD), async (req, res
 router.get('/:adjuntoId', async (req, res, next) => {
   const { db, config } = req.app.locals
   const id = Number(req.params.id)
-  await findIncident(db, req.user, id) // valida que el usuario pueda ver la incidencia
+  const incident = await findIncident(db, req.user, id) // valida que el usuario pueda ver la incidencia
   const row = await findAttachment(db, id, Number(req.params.adjuntoId))
+  // Las imágenes de una nota interna solo las ve el equipo de soporte.
+  if (row.id_comentario && !canManage(req.user, incident)) {
+    const owner = await db.first('SELECT es_interno FROM comentarios WHERE id_comentario = $1', [row.id_comentario])
+    if (owner?.es_interno) throw new HttpError(404, 'Adjunto no encontrado.')
+  }
 
   const name = encodeURIComponent(row.nombre_archivo)
   const disposition = req.query.descargar === undefined && isInline(row.tipo_mime) ? 'inline' : 'attachment'

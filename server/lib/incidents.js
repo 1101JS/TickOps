@@ -169,9 +169,11 @@ export async function incidentDetail(db, user, id) {
       [id]
     ),
     db.all(
-      `SELECT a.id_adjunto, a.nombre_archivo, a.tipo_mime, a.tamano_bytes, a.fecha_subida, a.id_usuario, u.nombre AS autor
+      `SELECT a.id_adjunto, a.nombre_archivo, a.tipo_mime, a.tamano_bytes, a.fecha_subida, a.id_usuario, a.id_comentario, u.nombre AS autor
        FROM adjuntos a JOIN usuarios u ON u.id_usuario = a.id_usuario
-       WHERE a.id_incidencia = $1 ORDER BY a.fecha_subida, a.id_adjunto`,
+       LEFT JOIN comentarios c ON c.id_comentario = a.id_comentario
+       WHERE a.id_incidencia = $1 ${manager ? '' : 'AND NOT COALESCE(c.es_interno, false)'}
+       ORDER BY a.fecha_subida, a.id_adjunto`,
       [id]
     ),
     relationDetail(db, user, row)

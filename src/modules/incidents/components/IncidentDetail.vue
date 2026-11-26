@@ -6,7 +6,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import AppModal from '../../shared/AppModal.vue'
 import {
-  ATTACHMENT_EXTENSIONS, RELATION_TYPES, addComment, attachmentUrl, categoriesByDepartment, checkAttachments, deleteAttachment, formatBytes,
+  ATTACHMENT_EXTENSIONS, RELATION_TYPES, addComment, attachmentUrl, categoriesByDepartment, checkAttachments, checkImages, deleteAttachment, formatBytes,
   formatDateTime, getAgents, getCatalogs, getIncident, getIncidents, relateIncident, resolveRelated, slug, transferIncident, unrelateIncident,
   updateIncident, uploadAttachments
 } from '../../../services/IncidentService.js'
@@ -32,7 +32,7 @@ const modal = ref(null)
 const transition = ref(null)
 const transitionComment = ref('')
 const transitionAgent = ref('')
-const comment = ref({ contenido: '', tipo: 'publico' })
+const comment = ref({ contenido: '', tipo: 'publico', imagenes: [] })
 const transfer = ref({ idCategoria: '', motivo: '' })
 const pendingFiles = ref([])
 const acceptedTypes = ATTACHMENT_EXTENSIONS.join(',')
@@ -160,14 +160,42 @@ async function applyTransition() {
 }
 
 function startComment() {
-  comment.value = { contenido: '', tipo: 'publico' }
+  comment.value = { contenido: '', tipo: 'publico', imagenes: [] }
   openModal('comment')
 }
 
+function addCommentImages(files) {
+  const images = [...comment.value.imagenes, ...files]
+  error.value = checkImages(images)
+  if (!error.value) comment.value.imagenes = images
+}
+
+function pickCommentImages(event) {
+  addCommentImages([...event.target.files])
+  event.target.value = ''
+}
+
+// Pegar una captura (Ctrl+V) dentro del cuadro de texto la agrega como imagen.
+function pasteCommentImages(event) {
+  const files = [...(event.clipboardData?.files || [])].filter((file) => file.type.startsWith('image/'))
+  if (!files.length) return
+  event.preventDefault()
+  addCommentImages(files.map((file) => (file.name && file.name !== 'image.png' ? file : new File([file], `captura-${Date.now()}.png`, { type: file.type }))))
+}
+
+function removeCommentImage(index) {
+  comment.value.imagenes.splice(index, 1)
+  error.value = ''
+}
+
+function commentImages(c) {
+  return inc.value.adjuntos.filter((file) => file.comentarioId === c.id && file.esImagen)
+}
+
 async function sendComment() {
-  const { contenido, tipo } = comment.value
+  const { contenido, tipo, imagenes } = comment.value
   const ok = await run(
-    () => addComment(inc.value.id, { contenido: contenido.trim(), esInterno: tipo === 'interno', esResolucion: tipo === 'resolucion' }),
+    () => addComment(inc.value.id, { contenido: contenido.trim(), esInterno: tipo === 'interno', esResolucion: tipo === 'resolucion', imagenes }),
     'Comentario agregado.'
   )
   if (ok) tab.value = 'comentarios'
@@ -397,6 +425,11 @@ onMounted(load)
               <em v-if="c.esInterno">Nota interna</em><em v-if="c.esResolucion">Resolución</em>
             </header>
             <p class="idt-text">{{ c.contenido }}</p>
+            <div v-if="commentImages(c).length" class="idt-comment-images">
+              <a v-for="img in commentImages(c)" :key="img.id" :href="attachmentUrl(inc.id, img.id)" target="_blank" rel="noopener">
+                <img :src="attachmentUrl(inc.id, img.id)" :alt="img.nombre" loading="lazy" />
+              </a>
+            </div>
           </article>
           <button v-if="inc.acciones.comentar" class="idt-btn" type="button" @click="startComment">+ Agregar comentario</button>
         </section>
@@ -493,7 +526,16 @@ onMounted(load)
 
     <AppModal v-if="modal === 'comment'" title="Agregar comentario" :kicker="`INCIDENCIA #${inc.id}`" @close="closeModal">
       <form class="idt-form" @submit.prevent="sendComment">
-        <label>Comentario<textarea v-model="comment.contenido" required maxlength="5000" placeholder="Escribe un comentario…" /></label>
+        <label>Comentario<textarea v-model="comment.contenido" required maxlength="5000" placeholder="Escribe un comentario… (puedes pegar capturas con Ctrl+V)" @paste="pasteCommentImages" /></label>
+        <label>Imágenes (opcional)
+          <input type="file" accept=".png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp" multiple @change="pickCommentImages" />
+        </label>
+        <ul v-if="comment.imagenes.length" class="idt-pending-images">
+          <li v-for="(file, index) in comment.imagenes" :key="index">
+            <span>{{ file.name }} · {{ formatBytes(file.size) }}</span>
+            <button class="idt-btn danger" type="button" @click="removeCommentImage(index)">Quitar</button>
+          </li>
+        </ul>
         <div v-if="inc.acciones.comentarioInterno" class="idt-radios" role="radiogroup" aria-label="Tipo de comentario">
           <label><input v-model="comment.tipo" type="radio" value="publico" /> Público</label>
           <label><input v-model="comment.tipo" type="radio" value="interno" /> Nota interna (no la ve el solicitante)</label>
@@ -725,6 +767,11 @@ a.idt-btn{text-decoration:none}
 .idt-files{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
 .idt-files li{display:flex;align-items:center;gap:12px;padding:8px 10px;border:1px solid var(--idt-border);border-radius:10px;background:var(--idt-bg)}
 .idt-thumb{flex:0 0 56px;height:56px;overflow:hidden;border-radius:7px;border:1px solid var(--idt-border);background:var(--idt-card)}
+.idt-comment-images{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.idt-comment-images a{display:block;border:1px solid var(--idt-border);border-radius:8px;overflow:hidden;background:var(--idt-card)}
+.idt-comment-images img{display:block;max-width:220px;max-height:160px;object-fit:cover}
+.idt-pending-images{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.idt-pending-images li{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px}
 .idt-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .idt-file-icon{display:grid;place-items:center;flex:0 0 56px;height:56px;border-radius:7px;background:var(--idt-card);border:1px solid var(--idt-border);color:var(--idt-primary);font-size:11px;font-weight:800}
 .idt-file-info{flex:1;min-width:0}

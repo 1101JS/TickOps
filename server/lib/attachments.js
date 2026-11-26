@@ -62,6 +62,13 @@ export function validateFile(file) {
   return { nombre, mime: type.mime, extension }
 }
 
+// Para los comentarios solo se aceptan imágenes.
+export function validateImage(file) {
+  const checked = validateFile(file)
+  if (!checked.mime.startsWith('image/')) throw new HttpError(400, `"${checked.nombre}": en los comentarios solo se pueden agregar imágenes (png, jpg, gif, webp).`)
+  return checked
+}
+
 export function isInline(mime) {
   return Object.values(TYPES).some((type) => type.mime === mime && type.inline)
 }
@@ -94,6 +101,7 @@ export function shapeAttachment(row) {
     fecha: row.fecha_subida,
     autorId: row.id_usuario,
     autor: row.autor,
+    comentarioId: row.id_comentario ?? null,
     esImagen: row.tipo_mime.startsWith('image/')
   }
 }
